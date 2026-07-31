@@ -1,10 +1,12 @@
 # Modelo de Domínio — AutoPilot
 
-**Status:** Proposta para aprovação (sem implementação)  
+**Status:** Aprovado — decisões congeladas em `domain-decisions.md`  
 **Escopo:** MVP — recuperação e conversão de leads com IA  
 **Idioma ubíquo:** português (Brasil), com nomes técnicos de entidade em English PascalCase
 
 Este documento é a **fonte oficial da linguagem do domínio**.  
+Decisões oficiais do MVP: [`domain-decisions.md`](./domain-decisions.md).  
+Modelo relacional: [`database-model.md`](./database-model.md).  
 Não substitui código. Nenhuma entidade Prisma/migration foi criada a partir dele ainda.
 
 ---
@@ -38,15 +40,16 @@ O AutoPilot **não é um CRM genérico**.
 | **Lead** | Pessoa ou contato interessado em comprar / ser atendido. Unidade central de recuperação e conversão. |
 | **Conversation** | Thread de comunicação com um Lead em um canal (ex.: WhatsApp). Contém Messages. |
 | **Message** | Unidade de mensagem dentro de uma Conversation (inbound ou outbound). **Não** é agregado próprio; pertence a Conversation. |
-| **Follow-Up** | Ação planejada ou executada de recontato com um Lead para evitar perda e avançar conversão. |
-| **Recovery Campaign** | Conjunto coordenado de Follow-Ups / mensagens para recuperar leads parados. *Conceito de produto; entidade persistida ainda pendente de decisão.* |
-| **Lead Score** | Indicador numérico/qualitativo de propensão ou prioridade do Lead. *Pode ser campo ou cálculo; decisão pendente.* |
+| **Follow-Up** | Ação de recontato. No MVP é **híbrido**: sistema sugere → usuário aprova → sistema envia. |
+| **Recovery Campaign** | Conceito de produto para V2. **Sem entidade no MVP.** |
+| **Lead Score** | Campo numérico `score` (0–100) em Lead. **Sem entidade própria.** |
 | **Event** | Fato de domínio imutável que ocorreu no sistema (ex.: `lead.created`, `message.received`). |
 | **AuditLog** | Registro de auditoria de uma ação importante (quem, o quê, quando, em qual Company). |
 | **Canal** | Meio de comunicação (MVP: WhatsApp via Evolution API). |
 | **IA (AI Layer)** | Camada auxiliar que classifica, sugere e gera insights. Sem poder destrutivo. |
 | **Soft Delete** | Exclusão lógica via `deleted_at`; nunca remoção física. |
-| **Conversão** | Resultado desejado do Lead (ex.: visita marcada, venda iniciada). Estados exatos pendentes de aprovação. |
+| **Conversão (`CONVERTED`)** | Objetivo comercial alcançado (visita, avaliação, proposta, financiamento ou venda). Não exige venda fechada. |
+| **Role** | Papel do Membership: `OWNER`, `ADMIN`, `AGENT` apenas. |
 
 ---
 
@@ -75,7 +78,7 @@ O AutoPilot **não é um CRM genérico**.
 |---|---|---|
 | **Company** | — | Raiz do tenant. |
 | **User** | — | Identidade global à plataforma. |
-| **Membership** | — | Aggregate próprio *ou* parte de Company — ver decisões pendentes. |
+| **Membership** | — | Aggregate próprio. Único vínculo User↔Company (D8). |
 | **Lead** | (opcional) tags/notas futuras | Ownership e status no root. |
 | **Conversation** | **Message** | Messages só existem dentro de Conversation. |
 | **FollowUp** | — | Referencia Lead (e opcionalmente Conversation). |
@@ -244,9 +247,10 @@ Define **quem pode fazer o quê** dentro de um tenant. É a base de autorizaçã
 
 #### Regras de negócio
 1. Todo acesso a dados da Company exige Membership `active`.
-2. Roles mínimos sugeridos (pendente aprovação): `owner`, `admin`, `agent`.
-3. Deve existir pelo menos um `owner` ativo por Company (regra a confirmar).
+2. Roles oficiais do MVP (D7): `OWNER`, `ADMIN`, `AGENT` — nenhuma adicional.
+3. User nunca pertence diretamente à Company (D8); Membership é obrigatória.
 4. Revogar Membership não apaga Leads/Conversas criados pelo usuário.
+5. Deve existir pelo menos um `OWNER` ativo por Company (regra operacional recomendada).
 
 #### Campos sugeridos
 | Campo | Tipo sugerido | Notas |
@@ -254,7 +258,7 @@ Define **quem pode fazer o quê** dentro de um tenant. É a base de autorizaçã
 | `id` | uuid | PK |
 | `company_id` | uuid | FK tenant |
 | `user_id` | uuid | FK |
-| `role` | enum | `owner`, `admin`, `agent` |
+| `role` | enum | `OWNER`, `ADMIN`, `AGENT` |
 | `status` | enum | `invited`, `active`, `revoked` |
 | `invited_by` | uuid? | User |
 | `joined_at` | datetime? | |
@@ -276,29 +280,25 @@ Unidade central do produto. Lead parado sem resposta é a dor principal que o Au
 - Ser alvo de Follow-Ups e Conversations
 - Receber classificação/score (humano ou IA)
 
-#### Ciclo de vida (MVP sugerido)
-1. **New** — entrou no sistema
-2. **Contacted** — houve tentativa/contato
-3. **In conversation** — diálogo ativo
-4. **Waiting** / **No response** — parado; candidato a recovery
-5. **Qualified** / **Converted** — avanço comercial
-6. **Lost** / **Archived** — encerrado sem conversão
-7. Soft-deleted
+#### Ciclo de vida (MVP — D1)
+1. **NEW** — recém-criado
+2. **CONTACTED** — primeiro contato realizado
+3. **RESPONDED** — cliente respondeu
+4. **QUALIFIED** — interesse real demonstrado
+5. **CONVERTED** ou **LOST** — encerramento
+6. Soft-deleted (quando aplicável)
 
-#### Estados possíveis (proposta)
+#### Estados possíveis (oficiais — D1)
 | Status | Significado |
 |---|---|
-| `new` | Recém-criado / ainda não trabalhado |
-| `contacted` | Já houve outbound |
-| `engaged` | Lead respondeu / conversa ativa |
-| `waiting_response` | Aguardando resposta (risco de perda) |
-| `follow_up_scheduled` | Há Follow-Up pendente |
-| `qualified` | Pronto para avanço comercial |
-| `converted` | Objetivo de conversão atingido |
-| `lost` | Perdido |
-| `archived` | Arquivado manualmente |
+| `NEW` | Lead recém-criado |
+| `CONTACTED` | Primeiro contato realizado |
+| `RESPONDED` | Cliente respondeu |
+| `QUALIFIED` | Lead demonstrou interesse real |
+| `CONVERTED` | Objetivo comercial alcançado (D2) |
+| `LOST` | Encerrado sem conversão |
 
-> Lista sujeita a redução no MVP — ver `domain-review.md`.
+**Não existem outros estados no MVP.**
 
 #### Relacionamentos
 - Lead N:1 Company
@@ -309,10 +309,12 @@ Unidade central do produto. Lead parado sem resposta é a dor principal que o Au
 
 #### Regras de negócio
 1. Lead sempre pertence a exatamente uma Company.
-2. Lead sem resposta além de um SLA configurável vira candidato a Follow-Up / recovery.
+2. `phone` é obrigatório e **único por Company** (D6); pode repetir entre Companies.
 3. Soft delete não remove histórico de Messages/Events.
-4. IA pode **sugerir** status/score; mudança efetiva segue política (humano ou automação aprovada).
-5. IA **não** pode apagar Lead.
+4. Follow-Up é híbrido (D3): sistema sugere → usuário aprova → sistema envia.
+5. IA pode **sugerir** status/score; não aplica mudanças destrutivas.
+6. IA **não** pode apagar Lead.
+7. `score` é integer 0–100 no próprio Lead (D4) — sem entidade aparte.
 
 #### Campos sugeridos
 | Campo | Tipo sugerido | Notas |
@@ -321,11 +323,11 @@ Unidade central do produto. Lead parado sem resposta é a dor principal que o Au
 | `company_id` | uuid | Tenant |
 | `owner_id` | uuid? | User responsável |
 | `name` | string? | |
-| `phone` | string? | E.164 preferível |
+| `phone` | string | E.164; único por Company |
 | `email` | string? | |
 | `source` | string/enum | ex.: `whatsapp`, `manual`, `import` |
-| `status` | enum | ver estados |
-| `score` | int? | Lead Score (0–100) — opcional MVP |
+| `status` | enum | `NEW`…`LOST` (D1) |
+| `score` | int | 0–100 (D4); default 0 |
 | `last_contact_at` | datetime? | |
 | `last_inbound_at` | datetime? | |
 | `last_outbound_at` | datetime? | |
@@ -429,10 +431,11 @@ Entidade interna do aggregate **Conversation**. Direção inbound/outbound; orig
 - Message pode disparar Event
 
 #### Regras de negócio
-1. Message sempre referencia `conversation_id` + `company_id`.
-2. Idempotência por (`company_id`, `channel`, `external_message_id`) quando houver id externo.
-3. IA pode **gerar** conteúdo sugerido / outbound automatizado sob política; **não** pode apagar Messages.
-4. Conteúdo sensível deve respeitar retenção/LGPD (política futura).
+1. Message **sempre** referencia `conversation_id` + `company_id` (D9) — nunca isolada.
+2. Idempotência por (`company_id`, `external_message_id`) quando houver id externo.
+3. No MVP, outbound automático de Follow-Up só após aprovação humana (D3).
+4. IA **não** pode apagar Messages.
+5. Conteúdo sensível deve respeitar retenção/LGPD (política futura).
 
 #### Campos sugeridos
 | Campo | Tipo sugerido | Notas |
@@ -459,28 +462,38 @@ Entidade interna do aggregate **Conversation**. Direção inbound/outbound; orig
 Garantir recontato tempestivo para leads em risco de perda.
 
 #### Descrição
-Unidade de trabalho de recuperação/acompanhamento. Pode ser criada por regra determinística, usuário ou sugestão de IA (execução sob política).
+Unidade de trabalho de recuperação/acompanhamento.
+
+**Modelo MVP (D3) — HÍBRIDO:**
+1. Sistema **sugere** (regra e/ou IA)
+2. Usuário **aprova**
+3. Sistema **envia**
+
+Modo fully-automatic: fora do MVP. Recovery Campaign: V2 (D5).
 
 #### Responsabilidades
-- Agendar próximo contato
-- Registrar execução / cancelamento / falha
+- Guardar sugestão e conteúdo proposto
+- Registrar aprovação do usuário
+- Executar envio após aprovação
 - Relacionar Lead e, opcionalmente, Conversation/Message gerada
-- Emitir Events (`follow_up.scheduled`, `follow_up.executed`, …)
+- Emitir Events (`follow_up.suggested`, `follow_up.approved`, `follow_up.executed`, …)
 
-#### Ciclo de vida
-1. **Scheduled**
-2. **Due** (chegou a hora)
-3. **Executing**
+#### Ciclo de vida (híbrido)
+1. **Suggested** — criado pelo sistema
+2. **Approved** / **Rejected** — decisão humana
+3. **Scheduled** / **Executing** — pós-aprovação
 4. **Executed** / **Failed** / **Cancelled** / **Skipped**
 5. Soft-deleted
 
 #### Estados possíveis
 | Status | Significado |
 |---|---|
-| `scheduled` | Agendado |
-| `due` | Pronto para execução |
-| `executing` | Em processamento |
-| `executed` | Concluído |
+| `suggested` | Sugestão aguardando aprovação |
+| `approved` | Usuário aprovou |
+| `rejected` | Usuário rejeitou |
+| `scheduled` | Agendado para envio |
+| `executing` | Em processamento de envio |
+| `executed` | Enviado/concluído |
 | `failed` | Falhou |
 | `cancelled` | Cancelado |
 | `skipped` | Ignorado (ex.: lead já respondeu) |
@@ -490,14 +503,14 @@ Unidade de trabalho de recuperação/acompanhamento. Pode ser criada por regra d
 - FollowUp N:1 Lead
 - FollowUp N:0..1 Conversation
 - FollowUp N:0..1 Message (mensagem gerada)
-- FollowUp N:0..1 User (`created_by` / `assigned_to`)
+- FollowUp N:0..1 User (`approved_by` / `assigned_to`)
 
 #### Regras de negócio
 1. Follow-Up sempre tem Lead + Company.
-2. Se o Lead responder antes da execução, o Follow-Up pode ser `skipped` (política a confirmar).
-3. Regras de “quando criar” vivem no **backend**, não no n8n.
-4. IA pode sugerir texto/horário; não pode apagar Follow-Ups livremente.
-5. Recovery Campaign (se existir como entidade) agruparia FollowUps — *decisão pendente*.
+2. No MVP, **envio só após aprovação humana** (D3).
+3. Regras de “quando sugerir” vivem no **backend**, não no n8n.
+4. IA pode sugerir texto/horário; não envia sozinha no MVP.
+5. Não existe entidade Recovery Campaign no MVP (D5).
 
 #### Campos sugeridos
 | Campo | Tipo sugerido | Notas |
@@ -507,12 +520,14 @@ Unidade de trabalho de recuperação/acompanhamento. Pode ser criada por regra d
 | `lead_id` | uuid | FK |
 | `conversation_id` | uuid? | |
 | `assigned_user_id` | uuid? | |
-| `channel` | enum | `whatsapp`, `call`, `other` |
-| `status` | enum | ver estados |
-| `type` | enum | `reminder`, `recovery`, `nurture`, … |
-| `scheduled_at` | datetime | |
+| `approved_by` | uuid? | User que aprovou |
+| `approved_at` | datetime? | |
+| `channel` | enum | `whatsapp` (MVP) |
+| `status` | enum | ver estados híbridos |
+| `type` | enum | `reminder`, `recovery`, `nurture` |
+| `scheduled_at` | datetime? | |
 | `executed_at` | datetime? | |
-| `message_template` | text? | ou `payload` json |
+| `suggested_body` | text? | conteúdo sugerido |
 | `result_message_id` | uuid? | Message gerada |
 | `cancel_reason` | string? | |
 | `created_at` / `updated_at` / `deleted_at` | datetime | |
@@ -675,8 +690,13 @@ O modelo está adequado ao MVP se permitir responder:
 
 ---
 
-## 9. Próximo passo (após aprovação deste documento)
+## 9. Próximo passo
 
-1. Resolver decisões em `domain-review.md`
-2. Congelar enums/estados do MVP
-3. Só então: models Prisma + migrations (etapa futura, com aprovação explícita)
+Decisões D1–D10 estão congeladas em `domain-decisions.md`.
+
+Ordem:
+
+1. ✅ Domínio + decisões
+2. ✅ Modelo relacional (`database-model.md` + `erd.md`)
+3. ⏳ Aprovação do modelo relacional
+4. ⏳ `schema.prisma` + migrations (**somente após aprovação explícita**)
