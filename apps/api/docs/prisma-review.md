@@ -1,8 +1,8 @@
 # Prisma Review — AutoPilot MVP
 
-**Status:** Schema gerado (sem migrations)  
+**Status:** Schema MVP + pacote **RECOMMENDED (A+B)** aplicado (sem migrations)  
 **Arquivo:** `apps/api/prisma/schema.prisma`  
-**Fontes:** `domain-model.md`, `domain-decisions.md`, `database-model.md`, `erd.md`, `database-principles.md`
+**Fontes:** `domain-model.md`, `domain-decisions.md`, `database-model.md`, `erd.md`, `database-principles.md`, `schema-audit.md`
 
 ---
 
@@ -61,10 +61,10 @@ Campos transversais em todas: `id` (UUID), `created_at`, `updated_at`, `deleted_
 | Company | `[status]`, `[slug]` |
 | User | `[status]` (+ `@unique` em `email`) |
 | Membership | `[companyId]`, `[userId]`, `[companyId, userId]`, `[companyId, role]` |
-| Lead | `[companyId, phone]`, `[companyId, status]`, `[companyId, ownerId]`, `[companyId, lastContactAt]`, `[companyId, score]` |
+| Lead | `[companyId, phone]`, `[companyId, status]`, `[companyId, ownerId]`, `[companyId, lastContactAt]`, `[companyId, lastInboundAt]`, `[companyId, score]`, `[companyId, createdAt]`, `[companyId, convertedAt]`, `[companyId, firstResponseAt]` |
 | Conversation | `[companyId, leadId]`, `[companyId, status]`, `[companyId, lastMessageAt]`, `[companyId, channel, externalThreadId]` |
 | Message | `[conversationId, createdAt]`, `[companyId, createdAt]`, `[companyId, status]`, `[companyId, externalMessageId]` |
-| FollowUp | `[companyId, status]`, `[companyId, scheduledAt]`, `[companyId, leadId]` |
+| FollowUp | `[companyId, status]`, `[companyId, scheduledAt]`, `[companyId, executedAt]`, `[companyId, leadId]` |
 | Event | `[companyId, occurredAt]`, `[companyId, type]`, `[aggregateType, aggregateId]`, `[status]` |
 | AuditLog | `[companyId, occurredAt]`, `[companyId, action]`, `[targetType, targetId]`, `[actorUserId]` |
 
@@ -105,7 +105,20 @@ Relações nomeadas no Prisma quando há múltiplas FKs para `User` no mesmo mod
 
 ---
 
-## 6. Decisões assumidas no schema
+## 6. Campos analíticos do Lead (pacote RECOMMENDED)
+
+| Campo | Tipo | Regra de preenchimento (aplicação) |
+|---|---|---|
+| `convertedAt` | `DateTime?` | Preenchido quando `status` muda para `CONVERTED`. **Nunca** removido automaticamente. |
+| `firstResponseAt` | `DateTime?` | Preenchido na **primeira** resposta válida do lead. **Nunca** recalculado depois. |
+
+Índices associados: `[companyId, convertedAt]`, `[companyId, firstResponseAt]`.
+
+**Não aplicados (Patch C rejeitado):** `Conversation.messageCount`, preview de mensagem.
+
+---
+
+## 7. Decisões assumidas no schema
 
 1. UUID via `@default(uuid()) @db.Uuid`
 2. Colunas/tabelas mapeadas com `@map` / `@@map` em `snake_case`
@@ -117,10 +130,11 @@ Relações nomeadas no Prisma quando há múltiplas FKs para `User` no mesmo mod
 8. Sem `@@unique` de negócio em Lead/Membership/Conversation/Message
 9. CHECK `score 0–100` e regra FollowUp `EXECUTED ⇒ approved_by` **não** expressos no Prisma (app layer)
 10. Soft delete presente; middleware Prisma de filtro automático **não** implementado nesta etapa
+11. Pacote audit **RECOMMENDED (A+B)** aplicado; Patch C não aplicado
 
 ---
 
-## 7. Possíveis riscos
+## 8. Possíveis riscos
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
@@ -131,23 +145,26 @@ Relações nomeadas no Prisma quando há múltiplas FKs para `User` no mesmo mod
 | Cross-tenant FK consistency | App pode apontar lead de outra company | Validar `company_id` igual em todos os writes |
 | Event/AuditLog soft delete | Contradiz append-only ideal | Usar soft delete só em casos legais; preferir retenção |
 | Score sem CHECK no DB | Score fora 0–100 | Validar na aplicação |
+| `convertedAt` / `firstResponseAt` só na app | Esquecer de setar corrompe métricas | Serviços de domínio + testes; nunca limpar automaticamente |
 
 ---
 
-## 8. Fora desta etapa
+## 9. Fora desta etapa
 
 - Migrations (`prisma migrate`)
 - Partial unique indexes SQL
 - Seed scripts (estratégia em `seed-strategy.md`; implementação futura)
 - Repositories / services / CRUDs
 - Prisma middleware de soft delete / tenancy
+- Patch C (inbox denormalizado)
 
 ---
 
-## 9. Próximos passos sugeridos
+## 10. Próximos passos sugeridos
 
-1. Aprovar este review
+1. Aprovar schema pós-RECOMMENDED
 2. Criar migration inicial a partir do schema
 3. Adicionar SQL customizado de partial uniques
 4. Implementar seeds conforme `seed-strategy.md`
 5. Middleware Prisma: soft delete + tenant scope
+6. Na app: regras de escrita de `convertedAt` e `firstResponseAt`

@@ -1,6 +1,11 @@
 // AutoPilot API — Prisma schema (MVP)
 // Sources: domain-model, domain-decisions, database-model, erd, database-principles
+// Audit package RECOMMENDED (A+B): Lead.convertedAt/firstResponseAt + recovery/dashboard indexes
 // No migrations in this stage. Partial unique indexes deferred to custom SQL migrations.
+//
+// Field rules (application layer):
+// - convertedAt: set when status becomes CONVERTED; never auto-cleared
+// - firstResponseAt: set on first valid lead response; never recalculated
 
 generator client {
   provider = "prisma-client-js"
@@ -147,23 +152,25 @@ model Membership {
 }
 
 model Lead {
-  id             String     @id @default(uuid()) @db.Uuid
-  companyId      String     @map("company_id") @db.Uuid
-  ownerId        String?    @map("owner_id") @db.Uuid
-  name           String?    @db.VarChar(200)
-  phone          String     @db.VarChar(32)
-  email          String?    @db.VarChar(320)
-  source         String     @default("WHATSAPP") @db.VarChar(32)
-  status         LeadStatus @default(NEW)
-  score          Int        @default(0)
-  lastContactAt  DateTime?  @map("last_contact_at") @db.Timestamptz(6)
-  lastInboundAt  DateTime?  @map("last_inbound_at") @db.Timestamptz(6)
-  lastOutboundAt DateTime?  @map("last_outbound_at") @db.Timestamptz(6)
-  externalId     String?    @map("external_id") @db.VarChar(191)
-  metadata       Json?
-  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  id              String     @id @default(uuid()) @db.Uuid
+  companyId       String     @map("company_id") @db.Uuid
+  ownerId         String?    @map("owner_id") @db.Uuid
+  name            String?    @db.VarChar(200)
+  phone           String     @db.VarChar(32)
+  email           String?    @db.VarChar(320)
+  source          String     @default("WHATSAPP") @db.VarChar(32)
+  status          LeadStatus @default(NEW)
+  score           Int        @default(0)
+  lastContactAt   DateTime?  @map("last_contact_at") @db.Timestamptz(6)
+  lastInboundAt   DateTime?  @map("last_inbound_at") @db.Timestamptz(6)
+  lastOutboundAt  DateTime?  @map("last_outbound_at") @db.Timestamptz(6)
+  convertedAt     DateTime?  @map("converted_at") @db.Timestamptz(6)
+  firstResponseAt DateTime?  @map("first_response_at") @db.Timestamptz(6)
+  externalId      String?    @map("external_id") @db.VarChar(191)
+  metadata        Json?
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
   company       Company        @relation(fields: [companyId], references: [id])
   owner         User?          @relation("LeadOwner", fields: [ownerId], references: [id])
@@ -174,7 +181,11 @@ model Lead {
   @@index([companyId, status])
   @@index([companyId, ownerId])
   @@index([companyId, lastContactAt])
+  @@index([companyId, lastInboundAt])
   @@index([companyId, score])
+  @@index([companyId, createdAt])
+  @@index([companyId, convertedAt])
+  @@index([companyId, firstResponseAt])
   @@map("leads")
 }
 
@@ -264,6 +275,7 @@ model FollowUp {
 
   @@index([companyId, status])
   @@index([companyId, scheduledAt])
+  @@index([companyId, executedAt])
   @@index([companyId, leadId])
   @@map("follow_ups")
 }

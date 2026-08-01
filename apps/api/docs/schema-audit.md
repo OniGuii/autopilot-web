@@ -1,13 +1,15 @@
 # Schema Audit — AutoPilot MVP
 
-**Status:** Auditoria (sem alteração de `schema.prisma`)  
+**Status:** Auditoria + pacote **RECOMMENDED (A+B) APLICADO**  
 **Alvo:** `apps/api/prisma/schema.prisma`  
 **Objetivo:** Validar se o schema sustenta os casos de uso do MVP sem refatoração imediata.
 
-**Veredito geral:**
+**Veredito geral (atualizado):**
 
-> O schema **suporta o MVP** para os fluxos principais (leads, conversas, follow-up híbrido, tenancy).  
-> Existem **gaps de índice e 2–3 campos derivados** que não bloqueiam o go-live do modelo, mas devem ser corrigidos **antes ou na primeira migration** para evitar dor em dashboard, recuperação e escala ~100k leads.
+> O schema **suporta o MVP** para os fluxos principais.  
+> Pacote **RECOMMENDED (A+B)** aplicado: índices P0 de recovery/dashboard + `Lead.convertedAt` / `Lead.firstResponseAt`.  
+> Patch C (inbox denormalizado) **não** aplicado — consciente e aceitável no MVP early.  
+> **Sem migrations ainda.**
 
 ---
 
@@ -19,15 +21,16 @@
 | Filtrar por status | ✅ | `@@index([companyId, status])` + enum `LeadStatus` | — |
 | Filtrar por responsável | ✅ | `ownerId` + `@@index([companyId, ownerId])` | `ownerId` opcional → fila “sem dono” ok |
 | Filtrar por data de contato | ✅ | `lastContactAt` + `@@index([companyId, lastContactAt])` | — |
-| Filtrar por data de criação | ⚠️ | `createdAt` existe | **Sem** `@@index([companyId, createdAt])` |
+| Filtrar por data de criação | ✅ | `@@index([companyId, createdAt])` *(A)* | — |
 | Filtrar por score | ✅ | `score` + `@@index([companyId, score])` | CHECK 0–100 só na app |
-| Leads “sem resposta” / recovery | ⚠️ | `lastInboundAt`, `lastOutboundAt`, `status` | **Sem índice** em `lastInboundAt` / `lastOutboundAt` |
+| Leads “sem resposta” / recovery | ✅ | `@@index([companyId, lastInboundAt])` *(A)* | `lastOutboundAt` ainda sem índice dedicado (P1 residual, ok MVP) |
+| Conversões no tempo | ✅ | `convertedAt` + index *(B)* | App seta ao entrar em `CONVERTED`; nunca auto-limpa |
+| Tempo até 1ª resposta | ✅ | `firstResponseAt` + index *(B)* | App seta uma vez; nunca recalcula |
 | Busca por telefone | ✅ | `@@index([companyId, phone])` | Unique parcial ainda não no DB |
 | Busca por nome | ⚠️ | `name` existe | Sem índice/`pg_trgm` (ok no MVP se busca for secundária) |
 
 ### Conclusão — Leads
-Fluxos de lista/filtro do MVP estão cobertos.  
-O caso **central do produto** (recovery por ausência de resposta) fica mais frágil sem índice em `last_inbound_at` / `last_outbound_at`.
+Lista, filtros, recovery e métricas temporais estão cobertos após RECOMMENDED.
 
 ---
 
@@ -36,8 +39,8 @@ O caso **central do produto** (recovery por ausência de resposta) fica mais fr�
 | Caso de uso | Suporte | Evidência | Lacuna |
 |---|---|---|---|
 | Última mensagem (ordenação inbox) | ✅ | `Conversation.lastMessageAt` + `@@index([companyId, lastMessageAt])` | App deve manter o campo atualizado a cada message |
-| Preview da última mensagem | ❌ | — | Campo ausente (`lastMessagePreview` / `lastMessageId`) |
-| Quantidade de mensagens | ⚠️ | Relação `messages` + `_count` Prisma | Sem `messageCount` denormalizado → custo em listas |
+| Preview da última mensagem | ⚠️ | — | Patch C **não** aplicado (decisão); resolver via join/`take` se necessário |
+| Quantidade de mensagens | ⚠️ | Relação `messages` + `_count` Prisma | Patch C **não** aplicado; `_count` ok no MVP early |
 | Conversa ativa | ✅ | `status = OPEN` + `@@index([companyId, status])` | — |
 | Conversa idle | ✅ | `status = IDLE` | Critério idle é app/job (ok) |
 | Conversa arquivada / fechada | ✅ | `ARCHIVED` / `CLOSED` | — |
@@ -56,8 +59,8 @@ Listagens com **contagem** e **preview** vão exigir `_count`/join ou campos den
 |---|---|---|---|
 | Pendentes de aprovação (`SUGGESTED`) | ✅ | `FollowUpStatus` + `@@index([companyId, status])` | — |
 | Aprovados (`APPROVED`) | ✅ | idem | — |
-| Agendados / fila de envio | ⚠️ | `scheduledAt` + index `[companyId, scheduledAt]` | Falta composto `[companyId, status, scheduledAt]` para due-queue |
-| Executados (`EXECUTED`) | ✅ | status indexado; `executedAt` existe | **`executedAt` sem índice** (dashboard por período) |
+| Agendados / fila de envio | ⚠️ | `scheduledAt` + index `[companyId, scheduledAt]` | Falta composto `[companyId, status, scheduledAt]` para due-queue (P1 residual) |
+| Executados (`EXECUTED`) | ✅ | status + `@@index([companyId, executedAt])` *(A)* | — |
 | Falhados (`FAILED`) | ✅ | status | — |
 | Fluxo híbrido D3 | ✅ | `approvedBy`, `approvedAt`, `suggestedBody`, `resultMessageId` | Regra EXECUTED⇒approvedBy só na app |
 | Por lead | ✅ | `@@index([companyId, leadId])` | — |
@@ -73,9 +76,9 @@ Filas operacionais e métricas por `executed_at` pedem 1–2 índices adicionais
 | Métrica MVP | Suporte | Como calcular hoje | Lacuna |
 |---|---|---|---|
 | Leads por status | ✅ | `GROUP BY status` com `companyId` + index status | Filtrar soft delete |
-| Conversões | ⚠️ | `COUNT` onde `status = CONVERTED` | Sem `convertedAt` → tendência temporal usa `updatedAt` (impreciso) |
-| Follow-ups executados | ⚠️ | `status = EXECUTED` | Filtro por período em `executedAt` sem índice |
-| Tempo médio de resposta | ❌/⚠️ | Inferir via pares INBOUND→OUTBOUND em `messages` | Sem `firstResponseAt` no Lead; query cara |
+| Conversões | ✅ | `status = CONVERTED` + `convertedAt` por período | App deve setar `convertedAt` na transição |
+| Follow-ups executados | ✅ | `status = EXECUTED` + index `executedAt` | — |
+| Tempo médio de resposta | ✅ | `AVG(firstResponseAt - createdAt)` (ou similar) por company | App seta `firstResponseAt` na 1ª resposta válida |
 | Leads sem resposta | ⚠️ | `lastInboundAt` / gap outbound | Índices ausentes (ver §1) |
 | Funil NEW→CONVERTED | ✅ | agregação por status | — |
 
@@ -183,8 +186,8 @@ Exige middleware + partial indexes na fase de migration.
 | Ponto de pressão | Risco | Por quê | Mitigação |
 |---|---|---|---|
 | Lista de conversas com `_count` messages | **Alto** | Aggregate por row | `messageCount` denormalizado |
-| Recovery scan sem índice em `last_inbound_at` | **Alto** | Seq scan por tenant grande | Índice P0 |
-| Dashboard tempo de resposta via messages | **Alto** | Janela grande de rows | `firstResponseAt` no Lead |
+| Recovery scan sem índice em `last_inbound_at` | **Mitigado** | Índice A aplicado | Monitorar seletividade + partial index SQL |
+| Dashboard tempo de resposta via messages | **Mitigado** | `firstResponseAt` (B) | Garantir escrita correta na app |
 | `events` / `audit_logs` unbounded | **Médio** | Append-only cresce rápido | Particionamento/retenção V2; arquivar |
 | Partial unique ausente | **Médio** | Duplicatas operacionais | SQL na migration |
 | JSON `metadata`/`payload` grandes | **Médio** | TOAST + I/O | Limitar tamanho na app |
@@ -198,50 +201,27 @@ Para 100k+ leads **por company**: precisa dos índices P0 e preferencialmente `c
 
 ---
 
-## 9. Matriz de prontidão MVP
+## 9. Matriz de prontidão MVP (pós-RECOMMENDED)
 
-| Fluxo | Pronto sem mudança? | Refatoração imediata necessária? |
+| Fluxo | Pronto? | Pendência residual |
 |---|---|---|
-| Recuperação de leads (CRUD/filtros básicos) | ✅ Sim | Não |
-| Recuperação “sem resposta” em escala | ⚠️ Parcial | Índices (não remodelagem) |
-| Conversas / WhatsApp thread | ✅ Sim | Não |
-| Inbox com count/preview | ⚠️ Parcial | Campos opcionais |
-| Follow-up híbrido | ✅ Sim | Índices auxiliares |
-| Dashboard básico (status/conversões/follow-ups) | ⚠️ Parcial | `convertedAt` + index `executedAt` |
-| Dashboard tempo de resposta | ❌ Frágil | `firstResponseAt` ou job analítico |
-| Multi-tenancy estrutural | ✅ Sim | Guard/RLS na app |
-| Soft delete | ✅ Sim | Middleware + partial indexes |
+| Recuperação de leads (CRUD/filtros) | ✅ | Soft-delete filter na app |
+| Recuperação “sem resposta” | ✅ | Partial index SQL futuro |
+| Conversas / WhatsApp thread | ✅ | — |
+| Inbox com count/preview | ⚠️ | Patch C adiado; `_count` ok early |
+| Follow-up híbrido | ✅ | Índice composto due-queue opcional |
+| Dashboard status/conversões/follow-ups | ✅ | Escrita de `convertedAt` na app |
+| Dashboard tempo de resposta | ✅ | Escrita de `firstResponseAt` na app |
+| Multi-tenancy estrutural | ✅ | Guard/RLS na app |
+| Soft delete | ✅ | Middleware + partial indexes |
 
-**Resposta à pergunta da auditoria:**  
-O schema **não exige refatoração estrutural** (tabelas/relações).  
-Exige **ajustes leves (índices + poucos campos derivados)** para fechar dashboard/recovery sem retrabalho cedo.
+**Schema pronto para migration inicial** após aprovação desta etapa.
 
 ---
 
-## 10. Recomendações
+## 10. Pacote RECOMMENDED — aplicado
 
-### Antes da migration (altamente recomendado)
-1. Adicionar índices P0: `Lead(companyId, createdAt)`, `Lead(companyId, lastInboundAt)`, `FollowUp(companyId, executedAt)`.
-2. Adicionar `Lead.convertedAt` e `Lead.firstResponseAt` (nullable).
-3. Planejar no SQL da migration: partial uniques (já decidido) + partial indexes `WHERE deleted_at IS NULL` nos caminhos quentes.
-
-### Pode esperar (MVP early)
-4. `Conversation.messageCount` / preview.
-5. Índice composto follow-up `(companyId, status, scheduledAt)`.
-6. RLS Postgres.
-7. Particionamento de `events` / `audit_logs`.
-
-### Disciplina de aplicação (obrigatória mesmo sem mudar schema)
-8. Middleware Prisma: filtro global `deletedAt: null`.
-9. `TenantGuard`: todo where com `companyId` do contexto.
-10. Validar mesma `companyId` em writes compostos (Lead↔Conversation↔Message↔FollowUp).
-11. Manter `lastMessageAt` / futuros campos derivados sincronizados em transação com Message.
-
----
-
-## 11. Correções sugeridas (para aprovação — ainda **não** aplicadas)
-
-### Patch A — Índices P0
+### Patch A — Índices P0 ✅
 ```prisma
 // Lead
 @@index([companyId, createdAt])
@@ -251,7 +231,7 @@ Exige **ajustes leves (índices + poucos campos derivados)** para fechar dashboa
 @@index([companyId, executedAt])
 ```
 
-### Patch B — Campos analíticos P1
+### Patch B — Campos analíticos P1 ✅
 ```prisma
 // Lead
 convertedAt     DateTime? @map("converted_at") @db.Timestamptz(6)
@@ -261,37 +241,36 @@ firstResponseAt DateTime? @map("first_response_at") @db.Timestamptz(6)
 @@index([companyId, firstResponseAt])
 ```
 
-### Patch C — Inbox P2 (opcional MVP)
-```prisma
-// Conversation
-messageCount       Int     @default(0) @map("message_count")
-lastMessagePreview String? @map("last_message_preview") @db.VarChar(280)
-```
+**Regras de aplicação (não no DB):**
+- `convertedAt`: setado na transição → `CONVERTED`; nunca removido automaticamente
+- `firstResponseAt`: setado na primeira resposta válida do lead; nunca recalculado
 
-### Patch D — Migration SQL (não Prisma)
-- Partial uniques já listadas em `prisma-review.md`
-- Partial indexes espelhando os compostos quentes com `WHERE deleted_at IS NULL`
+### Patch C — Inbox P2 ❌ não aplicado
+`messageCount` / preview permanecem fora do MVP schema.
 
----
-
-## 12. Decisão solicitada
-
-Escolher um pacote antes da migration:
-
-| Pacote | Conteúdo | Recomendação |
-|---|---|---|
-| **Minimal** | Só Patch A (índices) | Aceitável |
-| **Recommended** | Patch A + B | **Recomendado** |
-| **Full MVP inbox** | A + B + C | Se inbox for tela crítica no dia 1 |
+### Patch D — Migration SQL (próxima etapa, após aprovação)
+- Partial uniques (`prisma-review.md`)
+- Partial indexes `WHERE deleted_at IS NULL`
 
 ---
 
-## 13. Fora de escopo desta auditoria
+## 11. Recomendações remanescentes (pós-schema)
 
-- Alterar `schema.prisma` (aguardando aprovação)
-- Criar migrations
-- Implementar middleware/seeds/CRUD
+1. Criar migration inicial (quando aprovado)
+2. SQL: partial uniques + partial indexes quentes
+3. Middleware Prisma: `deletedAt: null`
+4. `TenantGuard` + validação cross-FK de `companyId`
+5. Serviços: setar `convertedAt` / `firstResponseAt` / `lastMessageAt` corretamente
+6. Adiar Patch C até pressão real na inbox
 
 ---
 
-**Aguardo aprovação do pacote de correções (Minimal / Recommended / Full) antes de qualquer mudança no schema ou migrations.**
+## 12. Fora de escopo agora
+
+- Criar migrations (aguardando aprovação)
+- Implementar seeds/CRUD/middleware
+- Aplicar Patch C
+
+---
+
+**Schema atualizado com RECOMMENDED. Aguardar aprovação antes de criar migrations.**
