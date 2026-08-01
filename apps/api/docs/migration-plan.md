@@ -55,9 +55,8 @@ Ordem oficial (respeita FKs e o aggregate Conversation → Message):
 companies ──┐
             ├── memberships
 users ──────┤
-            ├── leads ── conversations ── messages ──┐
-            │         └────────────── follow_ups � ├── leads ── conversations ── messages ──┐
-            │         └────────────── follow_ups ◄───┘
+            ├── leads ──┬── conversations ── messages ──┐
+            │           └──────── follow_ups ◄───────────┘
             ├── events
             └── audit_logs
 ```
