@@ -67,7 +67,7 @@ Listagens com **contagem** e **preview** vão exigir `_count`/join ou campos den
 
 ### Conclusão — Follow-up
 Máquina de estados híbrida está bem modelada.  
-Filas operacionais e métricas por `executed_at` pedem 1–2 índices adicionais.
+Índice em `executedAt` aplicado (A). Due-queue composta permanece opcional.
 
 ---
 
@@ -83,8 +83,8 @@ Filas operacionais e métricas por `executed_at` pedem 1–2 índices adicionais
 | Funil NEW→CONVERTED | ✅ | agregação por status | — |
 
 ### Conclusão — Dashboard
-3 de 4 métricas “de cartão” são viáveis.  
-**Tempo médio de resposta** é o maior buraco analítico do schema atual.
+Métricas principais do MVP estão suportadas após RECOMMENDED.  
+Dependência restante: disciplina de escrita de `convertedAt` / `firstResponseAt` na aplicação.
 
 ---
 
