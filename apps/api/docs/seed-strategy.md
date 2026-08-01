@@ -1,6 +1,6 @@
 # Estratégia de Seeds — AutoPilot MVP
 
-**Status:** Estratégia documental (sem implementação de seed nesta etapa)  
+**Status:** Estratégia oficial — implementação em `prisma/seeds/` (ver `seed-review.md`)  
 **Schema:** `apps/api/prisma/schema.prisma`  
 **Objetivo:** Definir como popular dados de forma segura, previsível e alinhada ao domínio.
 
@@ -27,13 +27,12 @@
 | `demo` | demos comerciais | Pitch / POC | rico e “bonito” |
 | `test` | CI / Jest | Determinístico e mínimo | mínimo |
 
-Sugestão de comando futuro (não implementado agora):
+Comandos implementados:
 
 ```bash
-npm run seed -- --profile=local
-npm run seed -- --profile=staging
-npm run seed -- --profile=demo
-# testes: fixtures via Nest Testing Module / factory, não seed global
+npm run seed:local
+npm run seed:demo
+npm run seed:test
 ```
 
 ---

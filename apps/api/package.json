@@ -20,7 +20,13 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed:local": "SEED_PROFILE=local ts-node --transpile-only prisma/seed.ts",
+    "seed:demo": "SEED_PROFILE=demo ts-node --transpile-only prisma/seed.ts",
+    "seed:test": "SEED_PROFILE=test ts-node --transpile-only prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
