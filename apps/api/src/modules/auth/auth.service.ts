@@ -257,20 +257,13 @@ export class AuthService {
       throw new UnauthorizedException('Session expired or revoked');
     }
 
-    // Mandatory rotation
+    // Mandatory rotation — create next token first (FK replaced_by_id).
     const nextId = randomUUID();
     const secret = randomBytes(32).toString('base64url');
     const tokenHash = await argon2.hash(secret);
 
     const membership = session.membership;
     await this.prisma.$transaction([
-      this.prisma.refreshToken.update({
-        where: { id: existing.id },
-        data: {
-          revokedAt: new Date(),
-          replacedById: nextId,
-        },
-      }),
       this.prisma.refreshToken.create({
         data: {
           id: nextId,
@@ -280,6 +273,13 @@ export class AuthService {
           companyId: membership?.companyId ?? session.companyId,
           tokenHash,
           expiresAt: this.refreshExpiresAt(),
+        },
+      }),
+      this.prisma.refreshToken.update({
+        where: { id: existing.id },
+        data: {
+          revokedAt: new Date(),
+          replacedById: nextId,
         },
       }),
     ]);
