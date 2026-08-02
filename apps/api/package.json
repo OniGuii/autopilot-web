@@ -23,7 +23,13 @@
     "postinstall": "prisma generate",
     "seed:local": "SEED_PROFILE=local ts-node --transpile-only prisma/seed.ts",
     "seed:demo": "SEED_PROFILE=demo ts-node --transpile-only prisma/seed.ts",
-    "seed:test": "SEED_PROFILE=test ts-node --transpile-only prisma/seed.ts"
+    "seed:test": "SEED_PROFILE=test ts-node --transpile-only prisma/seed.ts",
+    "db:start": "docker compose up -d postgres redis",
+    "db:stop": "docker compose stop postgres redis",
+    "db:reset": "prisma migrate reset --force --skip-seed",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed:local": "npm run seed:local",
+    "db:seed:demo": "npm run seed:demo"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
