@@ -163,8 +163,8 @@ npm run start:dev
 
 | Script | Comando real | Propósito |
 |---|---|---|
-| `db:start` | `docker compose up -d postgres redis` | Sobe Postgres + Redis |
-| `db:stop` | `docker compose stop postgres redis` | Para containers |
+| `db:start` | `bash scripts/db-start.sh` | Sobe Postgres + Redis (Docker, ou fallback nativo) |
+| `db:stop` | `bash scripts/db-stop.sh` | Para containers Docker (nativo: só orienta) |
 | `db:reset` | `prisma migrate reset --force --skip-seed` | Recria schema (sem seed) |
 | `db:migrate` | `prisma migrate deploy` | Aplica M1 + M2 |
 | `db:seed:local` | `npm run seed:local` | Seed desenvolvimento |
