@@ -1,9 +1,19 @@
 # Leads Design — Lead Management MVP
 
-**Status:** Design para aprovação (**sem implementação**)  
+**Status:** Aprovado → **implementado** (ver `leads-review.md`)  
 **Fase:** 3 — Lead Management MVP  
 **Pré-requisito:** Auth implementado (`auth-review.md`) — JWT com `cid` / `role` após `select-company`  
 **Referências:** `domain-decisions.md` (D1, D2, D4, D6, D7, D10), `schema.prisma` (`Lead`, `AuditLog`), `tenant-safety.md`
+
+### Decisões congeladas na aprovação
+
+- DELETE = `204 No Content`
+- `companyId` presente nas responses
+- phone normalizado para **dígitos apenas**
+- audit obrigatório na **mesma transação**
+- `ownerId` padrão `null`
+- ordenação padrão `created_at DESC`
+- Extra: `POST /api/leads/:id/assign` + filtro `unassigned=true`
 
 ---
 
