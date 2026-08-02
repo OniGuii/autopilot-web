@@ -1,9 +1,20 @@
 # Conversations Design — Conversations & Messages MVP
 
-**Status:** Design para aprovação (**sem implementação**)  
+**Status:** Aprovado → **implementado** (ver `conversations-review.md`)  
 **Fase:** 4 — Conversations MVP  
 **Pré-requisitos:** Auth (`auth-review.md`) + Leads (`leads-review.md`)  
 **Referências:** `domain-decisions.md` (D7, D9, D10), `domain-model.md` (§5.5–5.6), `schema.prisma` (`Conversation`, `Message`, `AuditLog`), `leads-design.md`
+
+### Decisões congeladas na aprovação
+
+- Ordenação listagem: `lastMessageAt DESC` (nulls last) + `createdAt DESC`
+- Múltiplas conversations por lead **permitidas**
+- GET `:id` retorna últimas **50** messages (ordem cronológica na response)
+- Query/campo oficial: **`assignedUserId`**
+- Audit `body` truncado em **2000** chars
+- `companyId` presente nas responses
+- Extra: `senderUserId` opcional em Message; `POST /conversations/:id/close`
+- Direção: `INBOUND` = cliente→empresa; `OUTBOUND` = empresa→cliente
 
 ---
 
