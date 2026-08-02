@@ -182,6 +182,43 @@ Assim, um registro soft-deleted não bloqueia recriação.
 
 ---
 
+### 3.3b `sessions` (Auth)
+
+| Coluna | Tipo | Null | Default | Descrição |
+|---|---|---|---|---|
+| `id` | UUID | NO | gen | PK |
+| `user_id` | UUID | NO | | FK → users |
+| `membership_id` | UUID | YES | | FK → memberships (após select-company) |
+| `company_id` | UUID | YES | | FK → companies (denormalizado) |
+| `expires_at` | TIMESTAMPTZ | NO | | TTL alinhado ao refresh |
+| `revoked_at` | TIMESTAMPTZ | YES | | logout / revoke |
+| `ip` | VARCHAR(64) | YES | | |
+| `user_agent` | VARCHAR(512) | YES | | |
+| `created_at` / `updated_at` / `deleted_at` | TIMESTAMPTZ | | | padrão |
+
+**Indexes:** `user_id`, `company_id`, `membership_id`, `expires_at`.  
+**Notas:** login cria sessão sem company; `POST /auth/select-company` faz o bind.
+
+### 3.3c `refresh_tokens` (Auth)
+
+| Coluna | Tipo | Null | Default | Descrição |
+|---|---|---|---|---|
+| `id` | UUID | NO | gen | PK (parte pública do token opaco) |
+| `session_id` | UUID | NO | | FK → sessions |
+| `user_id` | UUID | NO | | FK → users |
+| `membership_id` | UUID | YES | | FK → memberships |
+| `company_id` | UUID | YES | | FK → companies |
+| `token_hash` | VARCHAR(255) | NO | | argon2 do segredo |
+| `expires_at` | TIMESTAMPTZ | NO | | |
+| `revoked_at` | TIMESTAMPTZ | YES | | logout / rotação |
+| `replaced_by_id` | UUID | YES | | FK → refresh_tokens (linha de rotação) |
+| `created_at` / `updated_at` / `deleted_at` | TIMESTAMPTZ | | | padrão |
+
+**Indexes:** `session_id`, `user_id`, `company_id`, `expires_at`.  
+**Notas:** token opaco `id.secret`; apenas o secret é hasheado com argon2; rotação obrigatória no refresh.
+
+---
+
 ### 3.4 `leads`
 
 | Coluna | Tipo | Null | Default | Descrição |
@@ -422,6 +459,12 @@ Assim, um registro soft-deleted não bloqueia recriação.
 |---|---|---|---|
 | memberships | companies | N:1 | `company_id` |
 | memberships | users | N:1 | `user_id` |
+| sessions | users | N:1 | `user_id` |
+| sessions | memberships | N:0..1 | `membership_id` |
+| sessions | companies | N:0..1 | `company_id` |
+| refresh_tokens | sessions | N:1 | `session_id` |
+| refresh_tokens | users | N:1 | `user_id` |
+| refresh_tokens | refresh_tokens | N:0..1 | `replaced_by_id` |
 | leads | companies | N:1 | `company_id` |
 | leads | users | N:0..1 | `owner_id` |
 | conversations | companies | N:1 | `company_id` |
@@ -450,12 +493,13 @@ Assim, um registro soft-deleted não bloqueia recriação.
 1. `companies`
 2. `users`
 3. `memberships`
-4. `leads`
-5. `conversations`
-6. `messages`
-7. `follow_ups`
-8. `events`
-9. `audit_logs`
+4. `sessions` / `refresh_tokens` (auth)
+5. `leads`
+6. `conversations`
+7. `messages`
+8. `follow_ups`
+9. `events`
+10. `audit_logs`
 
 ---
 

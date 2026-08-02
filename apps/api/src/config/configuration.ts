@@ -20,4 +20,10 @@ export default () => ({
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
   },
+  jwt: {
+    accessSecret:
+      process.env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
+    accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
+    refreshTtlDays: parseInt(process.env.JWT_REFRESH_TTL_DAYS ?? '7', 10),
+  },
 });

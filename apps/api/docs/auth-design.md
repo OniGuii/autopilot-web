@@ -1,8 +1,15 @@
 # Auth Design — Identity & Access (MVP)
 
-**Status:** Design para aprovação (**sem implementação**)  
+**Status:** Aprovado com ajustes → **implementado** (ver `auth-review.md`)  
 **Fase:** 2 — Identity & Access  
 **Princípio:** menor solução possível para acessar o sistema com multi-tenancy seguro
+
+**Ajustes aprovados vs design original:**
+- Tabelas `sessions` + `refresh_tokens`
+- Endpoint `POST /auth/select-company` (login sem company; bind depois)
+- Claims JWT: `sub`, `sid` (sessionId), `mid`, `cid`, `role`
+- Argon2 para senha e refresh; rotação obrigatória
+- Sem OAuth; sem Tenant Extension global
 
 Referências: `domain-decisions.md` (D7/D8/D10), `tenant-safety.md`, `schema.prisma`
 

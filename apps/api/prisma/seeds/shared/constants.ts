@@ -1,5 +1,8 @@
 export const SEED_MARKER = 'autopilot-seed' as const;
 
+/** Shared password for local/demo/test seed users (argon2-hashed at seed time). */
+export const SEED_PASSWORD = 'Demo@12345' as const;
+
 export const LOCAL = {
   companySlug: 'local-demo',
   companyName: 'AutoPilot Local',

@@ -196,7 +196,7 @@ IDs/emails determinísticos por teste para asserts estáveis.
 
 ## 7. Segredos e credenciais
 
-- Senhas de seed: hash bcrypt de senha documentada só em `.env.example` / docs internas (`Local@123` etc.)
+- Senhas de seed: hash **argon2** da senha compartilhada `Demo@12345` (constante `SEED_PASSWORD` em `prisma/seeds/shared/constants.ts`)
 - Nunca commitar hashes de produção
 - `OPENAI_*` / `EVOLUTION_*` não necessários para seed base
 

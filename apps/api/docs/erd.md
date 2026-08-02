@@ -1,8 +1,8 @@
 # ERD Textual — AutoPilot MVP
 
-**Status:** Proposta (espelha `database-model.md`)  
+**Status:** Alinhado ao `schema.prisma` + migrations aplicadas  
 **Formato:** ASCII + Mermaid  
-**Sem schema Prisma / migrations nesta etapa.**
+**Auth:** inclui `sessions` e `refresh_tokens` (migration `20260802041000_auth_sessions`).
 
 ---
 
@@ -41,7 +41,25 @@
               │ deleted_at?          │
               │ UK*(company_id,      │
               │     user_id)         │
-              └──────────────────────┘
+              └──────────▲───────────┘
+                         │
+           ┌─────────────┴──────────────┐
+           │                            │
+┌──────────┴───────────┐     ┌──────────┴────────────┐
+│      sessions        │     │    refresh_tokens     │
+│──────────────────────│     │───────────────────────│
+│ id PK                │◄────┤ session_id FK         │
+│ user_id FK ──────────┼──►u │ user_id FK ───────────┼──► users
+│ membership_id? FK ───┼──►m │ membership_id? FK     │
+│ company_id? FK ──────┼──►c │ company_id? FK        │
+│ expires_at           │     │ token_hash (argon2)   │
+│ revoked_at?          │     │ expires_at            │
+│ ip? / user_agent?    │     │ revoked_at?           │
+│ created_at           │     │ replaced_by_id? FK ───┼──► refresh_tokens
+│ updated_at           │     │ created_at            │
+│ deleted_at?          │     │ updated_at            │
+└──────────────────────┘     │ deleted_at?           │
+                             └───────────────────────┘
 
 
 ┌──────────────────────┐
@@ -164,6 +182,12 @@ UK* = unique parcial WHERE deleted_at IS NULL
 erDiagram
   COMPANIES ||--o{ MEMBERSHIPS : has
   USERS ||--o{ MEMBERSHIPS : has
+  USERS ||--o{ SESSIONS : opens
+  MEMBERSHIPS ||--o{ SESSIONS : binds_optional
+  COMPANIES ||--o{ SESSIONS : context_optional
+  SESSIONS ||--o{ REFRESH_TOKENS : issues
+  USERS ||--o{ REFRESH_TOKENS : owns
+  REFRESH_TOKENS ||--o| REFRESH_TOKENS : replaced_by
   COMPANIES ||--o{ LEADS : owns
   USERS ||--o{ LEADS : owns_optional
   COMPANIES ||--o{ CONVERSATIONS : owns
@@ -210,6 +234,35 @@ erDiagram
     string status
     uuid invited_by FK
     timestamptz joined_at
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz deleted_at
+  }
+
+  SESSIONS {
+    uuid id PK
+    uuid user_id FK
+    uuid membership_id FK
+    uuid company_id FK
+    timestamptz expires_at
+    timestamptz revoked_at
+    string ip
+    string user_agent
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz deleted_at
+  }
+
+  REFRESH_TOKENS {
+    uuid id PK
+    uuid session_id FK
+    uuid user_id FK
+    uuid membership_id FK
+    uuid company_id FK
+    string token_hash
+    timestamptz expires_at
+    timestamptz revoked_at
+    uuid replaced_by_id FK
     timestamptz created_at
     timestamptz updated_at
     timestamptz deleted_at
@@ -315,6 +368,8 @@ erDiagram
 | Relação | Cardinalidade | Regra |
 |---|---|---|
 | User ↔ Company | N:N via Membership | Membership obrigatória para acesso |
+| User → Session | 1:N | login cria sessão; select-company faz bind |
+| Session → RefreshToken | 1:N | rotação obrigatória; lineage via replaced_by_id |
 | Company → Lead | 1:N | phone único por company |
 | Lead → Conversation | 1:N | |
 | Conversation → Message | 1:N | Message nunca órfã |
@@ -331,8 +386,7 @@ erDiagram
 
 ---
 
-## 5. Próximo passo
+## 5. Auth no ERD
 
-Após aprovação de `database-model.md` + este ERD:
-
-→ gerar `prisma/schema.prisma` e migration inicial (**somente com autorização explícita**).
+JWT claims: `sub` (userId), `sid` (sessionId), `mid` (membershipId), `cid` (companyId), `role`.  
+Tenant Extension global **não** está ativa; isolamento de company no Auth é via Membership + claims.

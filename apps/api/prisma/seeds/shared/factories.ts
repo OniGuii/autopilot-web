@@ -9,7 +9,17 @@ import {
   UserStatus,
   FollowUpStatus,
 } from '@prisma/client';
-import { LEAD_STATUSES, SEED_MARKER } from './constants';
+import * as argon2 from 'argon2';
+import { LEAD_STATUSES, SEED_MARKER, SEED_PASSWORD } from './constants';
+
+let cachedPasswordHash: string | null = null;
+
+async function seedPasswordHash(): Promise<string> {
+  if (!cachedPasswordHash) {
+    cachedPasswordHash = await argon2.hash(SEED_PASSWORD);
+  }
+  return cachedPasswordHash;
+}
 
 type SeedMeta = {
   seed: typeof SEED_MARKER;
@@ -58,20 +68,24 @@ export async function upsertCompany(
 
 export async function upsertUser(
   prisma: PrismaClient,
-  input: { email: string; name: string },
+  input: { email: string; name: string; password?: string },
 ) {
+  const passwordHash = input.password
+    ? await argon2.hash(input.password)
+    : await seedPasswordHash();
   return prisma.user.upsert({
     where: { email: input.email },
     create: {
       email: input.email,
       name: input.name,
       status: UserStatus.ACTIVE,
-      passwordHash: null,
+      passwordHash,
     },
     update: {
       name: input.name,
       status: UserStatus.ACTIVE,
       deletedAt: null,
+      passwordHash,
     },
   });
 }
