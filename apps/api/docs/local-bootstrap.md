@@ -75,14 +75,16 @@ REDIS_PORT=6379
 
 ```bash
 npm run db:start
-# = docker compose up -d postgres redis
+# Preferência: Docker Compose (postgres + redis)
+# Fallback: Postgres/Redis nativos (ex.: agentes cloud sem Docker)
 ```
 
 ### Parar infra
 
 ```bash
 npm run db:stop
-# = docker compose stop postgres redis
+# Docker: stop postgres/redis
+# Nativo: mantém serviços; ver dica no script
 ```
 
 ### Healthcheck Postgres
