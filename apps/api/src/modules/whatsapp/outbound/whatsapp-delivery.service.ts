@@ -1,0 +1,256 @@
+import { Injectable } from '@nestjs/common';
+import { MessageDirection, Prisma } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { AuditService } from '../../audit/audit.service';
+import {
+  auditActionForStatus,
+  canTransitionOutboundStatus,
+  isRegressionOrInvalidTransition,
+  OUTBOUND_MESSAGE_STATUS,
+} from './message-status';
+import type { ParsedDeliveryUpdate } from './parse-delivery-update';
+import type { EchoCandidate } from './parse-echo-candidate';
+
+const HEAL_WINDOW_MS = 2 * 60 * 1000;
+
+export type DeliveryApplyResult =
+  | { kind: 'applied'; messageId: string; from: string; to: string }
+  | { kind: 'noop'; messageId: string; status: string }
+  | { kind: 'regression'; messageId: string; from: string; to: string }
+  | { kind: 'not_found' };
+
+export type EchoHealResult =
+  | {
+      kind: 'healed';
+      messageId: string;
+      conversationId: string;
+      leadId: string;
+    }
+  | {
+      kind: 'duplicate';
+      messageId: string;
+      conversationId: string;
+      leadId: string;
+    }
+  | { kind: 'ignored' };
+
+@Injectable()
+export class WhatsappDeliveryService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  async applyDeliveryUpdate(
+    companyId: string,
+    update: ParsedDeliveryUpdate,
+  ): Promise<DeliveryApplyResult> {
+    const message = await this.prisma.message.findFirst({
+      where: {
+        companyId,
+        externalMessageId: update.externalMessageId,
+        direction: MessageDirection.OUTBOUND,
+        deletedAt: null,
+      },
+    });
+
+    if (!message) {
+      return { kind: 'not_found' };
+    }
+
+    if (message.status === update.targetStatus) {
+      return { kind: 'noop', messageId: message.id, status: message.status };
+    }
+
+    if (
+      isRegressionOrInvalidTransition(message.status, update.targetStatus) ||
+      !canTransitionOutboundStatus(message.status, update.targetStatus)
+    ) {
+      await this.prisma.$transaction(async (tx) => {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: null,
+          action: 'WHATSAPP_MESSAGE_STATUS_REGRESSION',
+          targetType: 'MESSAGE',
+          targetId: message.id,
+          before: { status: message.status },
+          after: {
+            attemptedStatus: update.targetStatus,
+            ignored: true,
+          },
+        });
+      });
+
+      return {
+        kind: 'regression',
+        messageId: message.id,
+        from: message.status,
+        to: update.targetStatus,
+      };
+    }
+
+    const data: Prisma.MessageUpdateManyMutationInput = {
+      status: update.targetStatus,
+    };
+
+    if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.SENT) {
+      data.sentAt = message.sentAt ?? update.occurredAt;
+    }
+    if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.DELIVERED) {
+      data.deliveredAt = update.occurredAt;
+    }
+    if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.READ) {
+      data.readAt = update.occurredAt;
+    }
+    if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.FAILED) {
+      data.failedAt = update.occurredAt;
+      data.errorMessage = update.errorMessage;
+    }
+
+    const auditAction = auditActionForStatus(update.targetStatus);
+
+    const applied = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.message.updateMany({
+        where: {
+          id: message.id,
+          companyId,
+          status: message.status,
+          deletedAt: null,
+        },
+        data,
+      });
+
+      if (updated.count === 0) {
+        return false;
+      }
+
+      if (auditAction) {
+        // P3-A1: send API already audits SENT from PENDING; webhook SENT only if from PENDING
+        if (
+          auditAction === 'WHATSAPP_MESSAGE_SENT' &&
+          message.status !== OUTBOUND_MESSAGE_STATUS.PENDING
+        ) {
+          return true;
+        }
+
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: null,
+          action: auditAction,
+          targetType: 'MESSAGE',
+          targetId: message.id,
+          before: { status: message.status },
+          after: {
+            status: update.targetStatus,
+            externalMessageId: message.externalMessageId,
+          },
+        });
+      }
+
+      return true;
+    });
+
+    if (!applied) {
+      return { kind: 'noop', messageId: message.id, status: message.status };
+    }
+
+    return {
+      kind: 'applied',
+      messageId: message.id,
+      from: message.status,
+      to: update.targetStatus,
+    };
+  }
+
+  /**
+   * P3-E1/E2 — Echo Protection heal race:
+   * fromMe upsert with unknown external id → attach to recent OUTBOUND PENDING/SENT.
+   */
+  async healEchoRace(
+    companyId: string,
+    echo: EchoCandidate,
+  ): Promise<EchoHealResult> {
+    const existing = await this.prisma.message.findFirst({
+      where: {
+        companyId,
+        externalMessageId: echo.externalMessageId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        conversation: { select: { leadId: true } },
+      },
+    });
+
+    if (existing) {
+      return {
+        kind: 'duplicate',
+        messageId: existing.id,
+        conversationId: existing.conversationId,
+        leadId: existing.conversation.leadId,
+      };
+    }
+
+    const since = new Date(Date.now() - HEAL_WINDOW_MS);
+    const candidate = await this.prisma.message.findFirst({
+      where: {
+        companyId,
+        direction: MessageDirection.OUTBOUND,
+        deletedAt: null,
+        externalMessageId: null,
+        status: {
+          in: [OUTBOUND_MESSAGE_STATUS.PENDING, OUTBOUND_MESSAGE_STATUS.SENT],
+        },
+        createdAt: { gte: since },
+        conversation: {
+          deletedAt: null,
+          lead: { phone: echo.remotePhone, deletedAt: null },
+        },
+        ...(echo.body ? { body: echo.body } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { conversation: { select: { leadId: true } } },
+    });
+
+    if (!candidate) {
+      return { kind: 'ignored' };
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.message.update({
+        where: { id: candidate.id },
+        data: {
+          externalMessageId: echo.externalMessageId,
+          status: OUTBOUND_MESSAGE_STATUS.SENT,
+          sentAt: candidate.sentAt ?? now,
+          errorMessage: null,
+        },
+      });
+
+      if (candidate.status === OUTBOUND_MESSAGE_STATUS.PENDING) {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: null,
+          action: 'WHATSAPP_MESSAGE_SENT',
+          targetType: 'MESSAGE',
+          targetId: candidate.id,
+          before: { status: OUTBOUND_MESSAGE_STATUS.PENDING },
+          after: {
+            status: OUTBOUND_MESSAGE_STATUS.SENT,
+            externalMessageId: echo.externalMessageId,
+            healedFromEcho: true,
+          },
+        });
+      }
+    });
+
+    return {
+      kind: 'healed',
+      messageId: candidate.id,
+      conversationId: candidate.conversationId,
+      leadId: candidate.conversation.leadId,
+    };
+  }
+}

@@ -76,14 +76,20 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       ),
     };
 
+    const delivery = {
+      applyDeliveryUpdate: jest.fn().mockResolvedValue({ kind: 'not_found' }),
+      healEchoRace: jest.fn().mockResolvedValue({ kind: 'ignored' }),
+    };
+
     const service = new WhatsappService(
       prisma as never,
       audit as never,
       evolution as never,
       inbound as never,
+      delivery as never,
     );
 
-    return { service, prisma, inbound, webhookEvents, instance };
+    return { service, prisma, inbound, delivery, webhookEvents, instance };
   }
 
   const inboundPayload = {
@@ -207,8 +213,8 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
     );
   });
 
-  it('ignores echo fromMe and records IGNORED webhook event', async () => {
-    const { service, inbound, prisma } = await build();
+  it('ignores echo fromMe when heal finds nothing (never creates inbound)', async () => {
+    const { service, inbound, delivery, prisma } = await build();
 
     const result = await service.handleWebhook(instanceKey, plainSecret, {
       event: 'messages.upsert',
@@ -228,11 +234,47 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       reason: 'ECHO_FROM_ME',
     });
     expect(inbound.processInboundMessage).not.toHaveBeenCalled();
+    expect(delivery.healEchoRace).toHaveBeenCalled();
     expect(prisma.webhookEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: WebhookEventStatus.IGNORED,
           error: 'ECHO_FROM_ME',
+        }),
+      }),
+    );
+  });
+
+  it('applies delivery ack updates for outbound messages', async () => {
+    const { service, delivery, prisma } = await build();
+    delivery.applyDeliveryUpdate.mockResolvedValue({
+      kind: 'applied',
+      messageId: 'msg-out',
+      from: 'SENT',
+      to: 'DELIVERED',
+    });
+
+    const result = await service.handleWebhook(instanceKey, plainSecret, {
+      event: 'messages.update',
+      data: {
+        keyId: 'WA_OUT_1',
+        status: 'DELIVERY_ACK',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.messageId).toBe('msg-out');
+    expect(delivery.applyDeliveryUpdate).toHaveBeenCalledWith(
+      companyId,
+      expect.objectContaining({
+        externalMessageId: 'WA_OUT_1',
+        targetStatus: 'DELIVERED',
+      }),
+    );
+    expect(prisma.webhookEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: WebhookEventStatus.PROCESSED,
         }),
       }),
     );
