@@ -19,6 +19,11 @@ import { RejectFollowUpDto } from './dto/reject-follow-up.dto';
 import { RescheduleFollowUpDto } from './dto/reschedule-follow-up.dto';
 import { UpdateFollowUpDto } from './dto/update-follow-up.dto';
 import {
+  AI_SUGGESTION_APPROVED,
+  AI_SUGGESTION_REJECTED,
+  isAiFollowUpMetadata,
+} from '../ai/ai.constants';
+import {
   FOLLOWUP_EXECUTING_TIMEOUT_MS,
   FOLLOWUP_MAX_ATTEMPTS,
   FOLLOWUP_MESSAGE_SOURCE,
@@ -327,6 +332,20 @@ export class FollowUpService {
         userAgent: meta?.userAgent,
       });
 
+      if (isAiFollowUpMetadata(existing.metadata)) {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: actor.sub,
+          action: AI_SUGGESTION_APPROVED,
+          targetType: 'FOLLOWUP',
+          targetId: followUp.id,
+          before: this.snapshot(existing),
+          after: this.snapshot(followUp),
+          ip: meta?.ip,
+          userAgent: meta?.userAgent,
+        });
+      }
+
       return this.toResponse(followUp);
     });
   }
@@ -364,6 +383,20 @@ export class FollowUpService {
         ip: meta?.ip,
         userAgent: meta?.userAgent,
       });
+
+      if (isAiFollowUpMetadata(existing.metadata)) {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: actor.sub,
+          action: AI_SUGGESTION_REJECTED,
+          targetType: 'FOLLOWUP',
+          targetId: followUp.id,
+          before: this.snapshot(existing),
+          after: this.snapshot(followUp),
+          ip: meta?.ip,
+          userAgent: meta?.userAgent,
+        });
+      }
 
       return this.toResponse(followUp);
     });
