@@ -20,6 +20,7 @@ export default () => ({
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
   },
+  apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
   jwt: {
     accessSecret:
       process.env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',

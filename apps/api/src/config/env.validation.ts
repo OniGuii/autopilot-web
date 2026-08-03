@@ -20,6 +20,7 @@ export const envValidationSchema = Joi.object({
   EVOLUTION_API_URL: Joi.string().allow('').optional(),
   EVOLUTION_API_KEY: Joi.string().allow('').optional(),
   EVOLUTION_INSTANCE: Joi.string().allow('').optional(),
+  API_PUBLIC_URL: Joi.string().uri({ allowRelative: false }).allow('').optional(),
 
   JWT_ACCESS_SECRET: Joi.string().min(16).optional(),
   JWT_ACCESS_TTL: Joi.string().default('15m'),

@@ -75,6 +75,14 @@ enum FollowUpStatus {
   SKIPPED
 }
 
+enum WhatsAppConnectionStatus {
+  QR_PENDING
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -99,6 +107,7 @@ model Company {
   auditLogs     AuditLog[]
   sessions      Session[]
   refreshTokens RefreshToken[]
+  whatsappInstances WhatsAppInstance[]
 
   @@index([status])
   @@index([slug])
@@ -389,4 +398,32 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([actorUserId])
   @@map("audit_logs")
+}
+
+model WhatsAppInstance {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  companyId             String                    @map("company_id") @db.Uuid
+  /// Public webhook path key (D11: UUID)
+  instanceKey           String                    @unique @map("instance_key") @db.Uuid
+  evolutionInstanceName String                    @unique @map("evolution_instance_name") @db.VarChar(100)
+  evolutionInstanceId   String?                   @map("evolution_instance_id") @db.VarChar(191)
+  status                WhatsAppConnectionStatus
+  phoneNumber           String?                   @map("phone_number") @db.VarChar(32)
+  /// Argon2 hash of 64-byte webhook secret (D12)
+  webhookSecretHash     String                    @map("webhook_secret_hash") @db.VarChar(255)
+  qrCode                String?                   @map("qr_code")
+  qrExpiresAt           DateTime?                 @map("qr_expires_at") @db.Timestamptz(6)
+  connectedAt           DateTime?                 @map("connected_at") @db.Timestamptz(6)
+  lastDisconnectedAt    DateTime?                 @map("last_disconnected_at") @db.Timestamptz(6)
+  lastError             String?                   @map("last_error") @db.VarChar(1000)
+  metadata              Json?
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+  @@map("whatsapp_instances")
 }
