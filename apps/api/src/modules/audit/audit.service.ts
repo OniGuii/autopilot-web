@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 export type AuditWriteInput = {
   companyId: string;
-  actorUserId: string;
+  actorUserId?: string | null;
   action: string;
   targetType: string;
   targetId: string;
@@ -26,8 +26,8 @@ export class AuditService {
     return tx.auditLog.create({
       data: {
         companyId: input.companyId,
-        actorType: 'USER',
-        actorUserId: input.actorUserId,
+        actorType: input.actorUserId ? 'USER' : 'SYSTEM',
+        actorUserId: input.actorUserId ?? null,
         action: input.action,
         targetType: input.targetType,
         targetId: input.targetId,
