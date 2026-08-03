@@ -74,7 +74,8 @@ export class WhatsappController {
   @Post('webhook/:instanceKey')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Evolution webhook (connection events only in Phase 1)',
+    summary:
+      'Evolution webhook — connection updates + inbound messages (Phase 2)',
   })
   @ApiHeader({ name: 'X-Webhook-Secret', required: true })
   webhook(
