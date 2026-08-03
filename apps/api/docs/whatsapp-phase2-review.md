@@ -185,12 +185,13 @@ Stub mode (`EVOLUTION_API_URL` vazio) inalterado — testes usam webhook direto.
 
 ```bash
 cd apps/api
-npx prisma migrate deploy
+npx prisma migrate deploy   # applied 20260803160000_webhook_events
 npx prisma generate
-npm test -- --testPathPattern='whatsapp|parse-inbound'
+npm test -- --testPathPatterns='whatsapp|parse-inbound'
+npm run build
 ```
 
-(Ver relatório executivo do PR para saída.)
+Resultado: **3 suites / 20 tests passed**; `nest build` OK.
 
 ---
 
