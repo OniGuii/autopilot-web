@@ -1,9 +1,19 @@
 # Dashboard Design — Analytics MVP
 
-**Status:** Design para aprovação (**sem implementação**)  
+**Status:** Aprovado → **implementado** (ver `dashboard-review.md`)  
 **Fase:** 6 — Dashboard MVP  
 **Pré-requisitos:** Auth + Leads + Conversations + Follow-Ups  
 **Referências:** `domain-decisions.md` (D1, D2, D3, D7, D10), `schema.prisma`, `leads-review.md`, `conversations-review.md`, `followups-review.md`
+
+### Decisões congeladas na aprovação
+
+- Routes: `GET /api/dashboard`, `/overview`, `/leads`, `/conversations`, `/followups`
+- `conversionRate` = decimal **0–1**
+- Open = **OPEN + IDLE** · Closed = **CLOSED + ARCHIVED**
+- `from`/`to` habilitados (filtra `createdAt`)
+- `overdue` **ignora** período
+- Roles: OWNER / ADMIN / AGENT
+- Extra: `avgMessagesPerConversation`; leads `byStatus` chave/valor
 
 ---
 
