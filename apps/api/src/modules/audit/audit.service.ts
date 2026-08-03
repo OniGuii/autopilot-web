@@ -13,16 +13,23 @@ export type AuditWriteInput = {
   userAgent?: string;
 };
 
+/** Loose tx shape — works with base and extended Prisma transaction clients. */
+export type AuditTransaction = {
+  auditLog: {
+    create: (args: {
+      data: Prisma.AuditLogUncheckedCreateInput;
+      select: { id: true };
+    }) => Promise<{ id: string }>;
+  };
+};
+
 /**
  * Audit helper — callers must invoke inside the same Prisma transaction
  * as the business mutation.
  */
 @Injectable()
 export class AuditService {
-  write(
-    tx: Prisma.TransactionClient,
-    input: AuditWriteInput,
-  ): Promise<{ id: string }> {
+  write(tx: AuditTransaction, input: AuditWriteInput): Promise<{ id: string }> {
     return tx.auditLog.create({
       data: {
         companyId: input.companyId,

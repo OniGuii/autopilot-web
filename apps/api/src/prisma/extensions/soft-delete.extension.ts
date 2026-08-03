@@ -1,65 +1,125 @@
 import { Prisma } from '@prisma/client';
 
 /**
- * Scaffold — Soft Delete Prisma Extension (NOT activated).
+ * Soft Delete Prisma Extension (activated).
  *
- * Future behavior:
- * - Auto-filter deletedAt: null on find* queries
- * - Map delete → update { deletedAt: now() }
- * - Provide explicit includeDeleted / hardDelete escapes (restricted)
+ * - findMany / findFirst / count / aggregate / groupBy → deletedAt: null (unless overridden)
+ * - findUnique → hides soft-deleted rows (post-filter)
  *
- * This file is intentionally inert regarding runtime behavior until wired
- * into PrismaService with approval.
- *
- * @see docs/database-principles.md
- * @see docs/prisma-extensions.md
+ * Note: delete→update rewrite stays in the application layer (services already
+ * soft-delete via update). Extension focuses on read-path isolation.
  */
 
-/** All persisted models currently expose deletedAt. */
 export const SOFT_DELETE_MODELS = [
   'company',
   'user',
   'membership',
+  'session',
+  'refreshToken',
   'lead',
   'conversation',
   'message',
   'followUp',
   'event',
   'auditLog',
+  'whatsAppInstance',
+  'webhookEvent',
 ] as const;
 
 export type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];
 
+const SOFT_DELETE_MODEL_SET = new Set<string>(SOFT_DELETE_MODELS);
+
 export type SoftDeleteExtensionOptions = {
-  /** When true, find queries exclude soft-deleted rows. Future default: true. */
   filterDeleted?: boolean;
-  /**
-   * When true, prisma.*.delete becomes soft delete.
-   * Future default: true (hard delete forbidden in MVP app layer).
-   */
+  /** Kept for API compatibility; rewrite is handled in services. */
   rewriteDelete?: boolean;
 };
 
-/**
- * Placeholder factory for the future soft-delete extension.
- * Empty extension — does not alter PrismaClient until activated.
- */
+function isSoftDeleteModel(model: string): boolean {
+  return SOFT_DELETE_MODEL_SET.has(model);
+}
+
+function withNotDeleted(
+  where: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (where && Object.prototype.hasOwnProperty.call(where, 'deletedAt')) {
+    return where;
+  }
+  return { ...(where ?? {}), deletedAt: null };
+}
+
+type QueryArgs = {
+  model: string;
+  args: {
+    where?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  query: (args: unknown) => Promise<unknown>;
+};
+
 export function createSoftDeleteExtension(
-  _options: SoftDeleteExtensionOptions = {},
+  options: SoftDeleteExtensionOptions = {},
 ) {
-  // Intentionally empty — activation deferred.
+  const filterDeleted = options.filterDeleted !== false;
+
+  const handlers = {
+    async findMany({ model, args, query }: QueryArgs) {
+      if (filterDeleted && isSoftDeleteModel(model)) {
+        args = { ...args, where: withNotDeleted(args.where) };
+      }
+      return query(args);
+    },
+    async findFirst({ model, args, query }: QueryArgs) {
+      if (filterDeleted && isSoftDeleteModel(model)) {
+        args = { ...args, where: withNotDeleted(args.where) };
+      }
+      return query(args);
+    },
+    async findUnique({ model, args, query }: QueryArgs) {
+      const result = await query(args);
+      if (
+        filterDeleted &&
+        isSoftDeleteModel(model) &&
+        result &&
+        typeof result === 'object' &&
+        'deletedAt' in result &&
+        result.deletedAt != null
+      ) {
+        return null;
+      }
+      return result;
+    },
+    async count({ model, args, query }: QueryArgs) {
+      if (filterDeleted && isSoftDeleteModel(model)) {
+        args = { ...args, where: withNotDeleted(args.where) };
+      }
+      return query(args);
+    },
+    async aggregate({ model, args, query }: QueryArgs) {
+      if (filterDeleted && isSoftDeleteModel(model)) {
+        args = { ...args, where: withNotDeleted(args.where) };
+      }
+      return query(args);
+    },
+    async groupBy({ model, args, query }: QueryArgs) {
+      if (filterDeleted && isSoftDeleteModel(model)) {
+        args = { ...args, where: withNotDeleted(args.where) };
+      }
+      return query(args);
+    },
+  };
+
   return Prisma.defineExtension({
-    name: 'autopilot-soft-delete-scaffold',
-    // No query/model overrides yet.
+    name: 'autopilot-soft-delete',
+    query: {
+      $allModels: handlers,
+    },
   });
 }
 
-/** Pure helper for services until the extension is active. */
 export function notDeletedWhere<T extends Record<string, unknown>>(
   where?: T,
 ): T & { deletedAt: null } {
-  return {
-    ...(where ?? ({} as T)),
-    deletedAt: null,
-  };
+  return withNotDeleted(where) as T & { deletedAt: null };
 }

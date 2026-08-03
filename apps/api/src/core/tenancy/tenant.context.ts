@@ -1,7 +1,20 @@
+import { Injectable } from '@nestjs/common';
+import { getTenantCompanyId } from './tenant-als';
+
 /**
- * Scaffold: holds the current tenant (company) context for a request.
- * Implementation will be added in a dedicated multi-tenancy stage.
+ * Request helper for the active tenant (companyId from ALS / JWT.cid).
  */
+@Injectable()
 export class TenantContext {
-  // Intentionally empty — structural preparation only.
+  getCompanyId(): string | undefined {
+    return getTenantCompanyId();
+  }
+
+  requireCompanyId(): string {
+    const companyId = this.getCompanyId();
+    if (!companyId) {
+      throw new Error('Tenant context missing companyId');
+    }
+    return companyId;
+  }
 }

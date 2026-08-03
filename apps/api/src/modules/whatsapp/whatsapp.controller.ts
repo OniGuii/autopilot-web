@@ -17,6 +17,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { MembershipRole } from '@prisma/client';
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -101,6 +102,7 @@ export class WhatsappController {
 
   @Post('webhook/:instanceKey')
   @HttpCode(HttpStatus.OK)
+  @SkipThrottle()
   @ApiOperation({
     summary:
       'Evolution webhook — connection, inbound, delivery acks, echo protection',
