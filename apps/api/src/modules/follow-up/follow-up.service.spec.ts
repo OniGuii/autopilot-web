@@ -150,6 +150,38 @@ describe('FollowUpService Phase 4', () => {
     );
   });
 
+  it('approve de FollowUp AI também audita AI_SUGGESTION_APPROVED', async () => {
+    const { service, audits } = build({
+      followUp: {
+        status: FollowUpStatus.SUGGESTED,
+        approvedBy: null,
+        type: 'AI_REPLY',
+        metadata: { source: 'ai', model: 'gpt-4o-mini', attemptCount: 0 },
+      },
+    });
+
+    await service.approve(actor, 'fu-1', {}, undefined);
+    const actions = audits.map((a) => (a as { action: string }).action);
+    expect(actions).toContain('FOLLOWUP_APPROVE');
+    expect(actions).toContain('AI_SUGGESTION_APPROVED');
+  });
+
+  it('reject de FollowUp AI também audita AI_SUGGESTION_REJECTED', async () => {
+    const { service, audits } = build({
+      followUp: {
+        status: FollowUpStatus.SUGGESTED,
+        approvedBy: null,
+        type: 'AI_REPLY',
+        metadata: { source: 'ai', model: 'gpt-4o-mini', attemptCount: 0 },
+      },
+    });
+
+    await service.reject(actor, 'fu-1', { reason: 'tom inadequado' }, undefined);
+    const actions = audits.map((a) => (a as { action: string }).action);
+    expect(actions).toContain('FOLLOWUP_REJECT');
+    expect(actions).toContain('AI_SUGGESTION_REJECTED');
+  });
+
   it('execute uses WhatsappSendService with followup metadata (P4-D1/D5)', async () => {
     const { service, whatsappSend, audits, getStored } = build();
 
