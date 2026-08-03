@@ -25,12 +25,17 @@ import { CompanyContextGuard } from '../auth/guards/company-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { SendWhatsappMessageDto } from './dto/send-whatsapp-message.dto';
+import { WhatsappSendService } from './outbound/whatsapp-send.service';
 import { WhatsappService } from './whatsapp.service';
 
 @ApiTags('whatsapp')
 @Controller('whatsapp')
 export class WhatsappController {
-  constructor(private readonly whatsappService: WhatsappService) {}
+  constructor(
+    private readonly whatsappService: WhatsappService,
+    private readonly whatsappSendService: WhatsappSendService,
+  ) {}
 
   @Post('connect')
   @HttpCode(HttpStatus.OK)
@@ -52,7 +57,8 @@ export class WhatsappController {
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'WhatsApp connection status (status, phoneNumber, instanceName, connectedAt)',
+    summary:
+      'WhatsApp connection status (status, phoneNumber, instanceName, connectedAt)',
   })
   status(@CurrentUser() user: AuthenticatedUser) {
     return this.whatsappService.status(this.asCompanyActor(user));
@@ -63,9 +69,31 @@ export class WhatsappController {
   @UseGuards(JwtAuthGuard, CompanyContextGuard, RolesGuard)
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Disconnect instance (keeps row, status=DISCONNECTED)' })
+  @ApiOperation({
+    summary: 'Disconnect instance (keeps row, status=DISCONNECTED)',
+  })
   disconnect(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
     return this.whatsappService.disconnect(this.asCompanyActor(user), {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('send')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, CompanyContextGuard, RolesGuard)
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Send WhatsApp text message (Phase 3 outbound — requires CONNECTED instance)',
+  })
+  send(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SendWhatsappMessageDto,
+    @Req() req: Request,
+  ) {
+    return this.whatsappSendService.send(this.asCompanyActor(user), dto, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
@@ -75,7 +103,7 @@ export class WhatsappController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Evolution webhook — connection updates + inbound messages (Phase 2)',
+      'Evolution webhook — connection, inbound, delivery acks, echo protection',
   })
   @ApiHeader({ name: 'X-Webhook-Secret', required: true })
   webhook(

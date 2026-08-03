@@ -306,6 +306,9 @@ model Message {
   sentAt            DateTime?        @map("sent_at") @db.Timestamptz(6)
   deliveredAt       DateTime?        @map("delivered_at") @db.Timestamptz(6)
   readAt            DateTime?        @map("read_at") @db.Timestamptz(6)
+  /// Set when outbound reaches FAILED (P3); never delete FAILED rows (P3-D1)
+  failedAt          DateTime?        @map("failed_at") @db.Timestamptz(6)
+  errorMessage      String?          @map("error_message") @db.VarChar(1000)
   metadata          Json?
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -320,6 +323,7 @@ model Message {
   @@index([companyId, createdAt])
   @@index([companyId, status])
   @@index([companyId, externalMessageId])
+  @@index([companyId, direction, status])
   @@map("messages")
 }
 

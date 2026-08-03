@@ -22,6 +22,12 @@ import {
   parseInboundMessage,
 } from './inbound/parse-inbound-message';
 import { WhatsappInboundService } from './inbound/whatsapp-inbound.service';
+import { WhatsappDeliveryService } from './outbound/whatsapp-delivery.service';
+import {
+  isDeliveryEvent,
+  parseDeliveryUpdate,
+} from './outbound/parse-delivery-update';
+import { parseEchoCandidate } from './outbound/parse-echo-candidate';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
 
@@ -59,6 +65,7 @@ export class WhatsappService {
     private readonly audit: AuditService,
     private readonly evolution: EvolutionClient,
     private readonly inbound: WhatsappInboundService,
+    private readonly delivery: WhatsappDeliveryService,
   ) {}
 
   async connect(
@@ -154,7 +161,7 @@ export class WhatsappService {
   }
 
   /**
-   * Public webhook — connection (Fase 1) + inbound messages (Fase 2).
+   * Public webhook — connection (F1) + inbound (F2) + delivery acks (F3).
    * Tenant ONLY from WhatsAppInstance.instanceKey (never payload.companyId).
    * P2-S1: inbound accepted even when status != CONNECTED.
    */
@@ -213,6 +220,15 @@ export class WhatsappService {
         return result;
       }
 
+      if (isDeliveryEvent(eventName)) {
+        return await this.processDeliveryEvent(
+          companyId,
+          payload,
+          eventName,
+          webhookEvent.id,
+        );
+      }
+
       if (isMessageEvent(eventName)) {
         return await this.processMessageEvent(
           instance,
@@ -238,6 +254,77 @@ export class WhatsappService {
     }
   }
 
+  private async processDeliveryEvent(
+    companyId: string,
+    payload: Record<string, unknown>,
+    eventName: string,
+    webhookEventId: string,
+  ): Promise<WebhookResponse> {
+    const parsed = parseDeliveryUpdate(payload, eventName);
+    if (!parsed.ok) {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.IGNORED,
+        parsed.reason,
+      );
+      return { ok: true, ignored: true, reason: parsed.reason };
+    }
+
+    const result = await this.delivery.applyDeliveryUpdate(
+      companyId,
+      parsed.update,
+    );
+
+    if (result.kind === 'not_found') {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.IGNORED,
+        'OUTBOUND_MESSAGE_NOT_FOUND',
+      );
+      return { ok: true, ignored: true, reason: 'OUTBOUND_MESSAGE_NOT_FOUND' };
+    }
+
+    if (result.kind === 'regression') {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.IGNORED,
+        `REGRESSION_${result.from}_TO_${result.to}`,
+      );
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'STATUS_REGRESSION',
+        messageId: result.messageId,
+      };
+    }
+
+    if (result.kind === 'noop') {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.IGNORED,
+        'STATUS_UNCHANGED',
+      );
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'STATUS_UNCHANGED',
+        messageId: result.messageId,
+      };
+    }
+
+    await this.finalizeWebhookEvent(
+      webhookEventId,
+      WebhookEventStatus.PROCESSED,
+      null,
+    );
+    return {
+      ok: true,
+      messageId: result.messageId,
+      status: undefined,
+      reason: `${result.from}->${result.to}`,
+    };
+  }
+
   private async processMessageEvent(
     instance: WhatsAppInstance,
     companyId: string,
@@ -246,6 +333,43 @@ export class WhatsappService {
   ): Promise<WebhookResponse> {
     const parsed = parseInboundMessage(payload);
     if (!parsed.ok) {
+      // P3-E1/E2 — Echo Protection + heal race
+      if (parsed.reason === 'ECHO_FROM_ME') {
+        const echo = parseEchoCandidate(payload);
+        if (echo) {
+          const healed = await this.delivery.healEchoRace(companyId, echo);
+          if (healed.kind === 'healed') {
+            await this.finalizeWebhookEvent(
+              webhookEventId,
+              WebhookEventStatus.PROCESSED,
+              'ECHO_HEALED',
+            );
+            return {
+              ok: true,
+              messageId: healed.messageId,
+              leadId: healed.leadId,
+              conversationId: healed.conversationId,
+              reason: 'ECHO_HEALED',
+            };
+          }
+          if (healed.kind === 'duplicate') {
+            await this.finalizeWebhookEvent(
+              webhookEventId,
+              WebhookEventStatus.DUPLICATE,
+              'ECHO_DUPLICATE_EXTERNAL_ID',
+            );
+            return {
+              ok: true,
+              duplicate: true,
+              messageId: healed.messageId,
+              leadId: healed.leadId,
+              conversationId: healed.conversationId,
+              reason: 'ECHO_FROM_ME',
+            };
+          }
+        }
+      }
+
       await this.finalizeWebhookEvent(
         webhookEventId,
         WebhookEventStatus.IGNORED,

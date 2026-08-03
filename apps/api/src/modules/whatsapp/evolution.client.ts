@@ -1,10 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 
 export type EvolutionConnectResult = {
   qrCode: string | null;
   evolutionInstanceId?: string | null;
   stub: boolean;
+};
+
+export type EvolutionSendResult = {
+  externalMessageId: string;
+  stub: boolean;
+  raw?: unknown;
 };
 
 /**
@@ -61,6 +68,64 @@ export class EvolutionClient {
     await this.request('DELETE', `/instance/logout/${instanceName}`);
   }
 
+  /**
+   * Send plain text via Evolution (or stub id when EVOLUTION_API_URL empty).
+   */
+  async sendText(input: {
+    instanceName: string;
+    phone: string;
+    text: string;
+  }): Promise<EvolutionSendResult> {
+    if (this.isStubMode()) {
+      this.logger.warn(
+        `Evolution stub mode: fake send for ${input.instanceName} → ${input.phone}`,
+      );
+      return {
+        stub: true,
+        externalMessageId: `stub-out:${randomUUID()}`,
+      };
+    }
+
+    const number = input.phone.replace(/\D/g, '');
+    const data = await this.request<Record<string, unknown>>(
+      'POST',
+      `/message/sendText/${input.instanceName}`,
+      {
+        number,
+        text: input.text,
+      },
+    );
+
+    const externalMessageId = this.extractSentMessageId(data);
+    if (!externalMessageId) {
+      throw new Error('Evolution sendText response missing message id');
+    }
+
+    return {
+      stub: false,
+      externalMessageId,
+      raw: data,
+    };
+  }
+
+  private extractSentMessageId(data: Record<string, unknown>): string | null {
+    const key = data.key as Record<string, unknown> | undefined;
+    if (key && typeof key.id === 'string' && key.id.trim()) {
+      return key.id.trim().slice(0, 191);
+    }
+    if (typeof data.keyId === 'string' && data.keyId.trim()) {
+      return data.keyId.trim().slice(0, 191);
+    }
+    if (typeof data.messageId === 'string' && data.messageId.trim()) {
+      return data.messageId.trim().slice(0, 191);
+    }
+    const nested = data.data as Record<string, unknown> | undefined;
+    if (nested) {
+      return this.extractSentMessageId(nested);
+    }
+    return null;
+  }
+
   private webhookUrl(instanceKey: string): string {
     const base = this.publicApiUrl.replace(/\/$/, '');
     return `${base}/api/whatsapp/webhook/${instanceKey}`;
@@ -95,7 +160,11 @@ export class EvolutionClient {
         },
         byEvents: false,
         base64: false,
-        events: ['CONNECTION_UPDATE', 'MESSAGES_UPSERT'],
+        events: [
+          'CONNECTION_UPDATE',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+        ],
       },
     });
   }
