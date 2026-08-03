@@ -15,6 +15,7 @@ import { FollowUpModule } from './modules/follow-up/follow-up.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EventsModule } from './modules/events/events.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { OpsModule } from './modules/ops/ops.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AuditModule } from './modules/audit/audit.module';
     AiModule,
     FollowUpModule,
     DashboardModule,
+    OpsModule,
     EventsModule,
     AuditModule,
   ],
