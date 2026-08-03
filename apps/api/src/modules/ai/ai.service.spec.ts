@@ -47,24 +47,32 @@ describe('AiService', () => {
     minuteCount?: number;
     dayCount?: number;
     openaiImpl?: jest.Mock;
+    /** When true, second tryAcquireLock returns null (lock held). */
+    lockBusyAfterFirst?: boolean;
   }) {
     const audits: unknown[] = [];
     let countCalls = 0;
+    let lockAcquires = 0;
+    const held = new Map<string, string>();
 
     const prisma = {
       conversation: {
-        findFirst: jest.fn().mockResolvedValue(
-          opts?.conversation === undefined
-            ? { ...conversation }
-            : opts.conversation,
-        ),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(
+            opts?.conversation === undefined
+              ? { ...conversation }
+              : opts.conversation,
+          ),
       },
       message: {
-        findMany: jest.fn().mockResolvedValue(
-          opts?.messages ?? [
-            { direction: 'INBOUND', body: 'Olá, ainda tem o carro?' },
-          ],
-        ),
+        findMany: jest
+          .fn()
+          .mockResolvedValue(
+            opts?.messages ?? [
+              { direction: 'INBOUND', body: 'Olá, ainda tem o carro?' },
+            ],
+          ),
       },
       followUp: {
         count: jest.fn().mockImplementation(async ({ where }) => {
@@ -116,13 +124,38 @@ describe('AiService', () => {
         }),
     };
 
+    const redis = {
+      tryAcquireLock: jest.fn(async (key: string) => {
+        lockAcquires += 1;
+        if (opts?.lockBusyAfterFirst && lockAcquires > 1) {
+          return null;
+        }
+        if (held.has(key)) return null;
+        const token = `tok-${lockAcquires}`;
+        held.set(key, token);
+        return token;
+      }),
+      releaseLock: jest.fn(async (key: string, token: string) => {
+        if (held.get(key) === token) held.delete(key);
+      }),
+    };
+
     const service = new AiService(
       prisma as never,
-      audit as never,
+      audit,
       openai as never,
+      redis as never,
     );
 
-    return { service, prisma, audit, openai, audits, countCalls: () => countCalls };
+    return {
+      service,
+      prisma,
+      audit,
+      openai,
+      redis,
+      audits,
+      countCalls: () => countCalls,
+    };
   }
 
   it('gera FollowUp AI_REPLY SUGGESTED e audita AI_SUGGESTION_GENERATED', async () => {
@@ -184,7 +217,7 @@ describe('AiService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('aplica lock lógico: segunda geração simultânea na mesma conversation falha', async () => {
+  it('aplica lock Redis: segunda geração simultânea na mesma conversation falha', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -198,7 +231,7 @@ describe('AiService', () => {
         usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       };
     });
-    const { service } = build({ openaiImpl });
+    const { service, redis } = build({ openaiImpl });
 
     const first = service.suggestForConversation(actor, conversationId, {});
 
@@ -207,6 +240,7 @@ describe('AiService', () => {
       await Promise.resolve();
     }
     expect(openaiImpl).toHaveBeenCalled();
+    expect(redis.tryAcquireLock).toHaveBeenCalled();
 
     await expect(
       service.suggestForConversation(actor, conversationId, {}),
@@ -214,6 +248,7 @@ describe('AiService', () => {
 
     release();
     await first;
+    expect(redis.releaseLock).toHaveBeenCalled();
   });
 
   it('rate limit por minuto retorna 429', async () => {

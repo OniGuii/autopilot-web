@@ -13,15 +13,17 @@ import {
   Channel,
   ConversationStatus,
   FollowUpStatus,
-  Prisma,
 } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../shared/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
-import { PrismaService } from '../../prisma/prisma.service';
 import {
   AI_CONTEXT_MAX_CHARS,
   AI_CONTEXT_MAX_MESSAGES,
   AI_FOLLOWUP_TYPE,
+  AI_GENERATION_LOCK_PREFIX,
+  AI_GENERATION_LOCK_TTL_MS,
   AI_METADATA_SOURCE,
   AI_MSG_BODY_MAX_CHARS,
   AI_PROMPT_VERSION,
@@ -62,13 +64,12 @@ type AiMetadata = {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  /** Lock lógico em memória: uma geração simultânea por Conversation. */
-  private readonly generationLocks = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly openai: OpenAiClient,
+    private readonly redis: RedisService,
   ) {}
 
   async suggestForConversation(
@@ -109,13 +110,16 @@ export class AiService {
       );
     }
 
-    const lockKey = `${companyId}:${conversationId}`;
-    if (this.generationLocks.has(lockKey)) {
+    const lockKey = `${AI_GENERATION_LOCK_PREFIX}${companyId}:${conversationId}`;
+    const lockToken = await this.redis.tryAcquireLock(
+      lockKey,
+      AI_GENERATION_LOCK_TTL_MS,
+    );
+    if (!lockToken) {
       throw new ConflictException(
         'Já existe uma geração de sugestão IA em andamento para esta Conversation',
       );
     }
-    this.generationLocks.add(lockKey);
 
     try {
       await this.assertRateLimits(companyId);
@@ -202,7 +206,7 @@ export class AiService {
             channel: Channel.WHATSAPP,
             status: FollowUpStatus.SUGGESTED,
             suggestedBody,
-            metadata: metadata as unknown as Prisma.InputJsonValue,
+            metadata: metadata,
           },
         });
 
@@ -246,7 +250,7 @@ export class AiService {
         },
       };
     } finally {
-      this.generationLocks.delete(lockKey);
+      await this.redis.releaseLock(lockKey, lockToken);
     }
   }
 
