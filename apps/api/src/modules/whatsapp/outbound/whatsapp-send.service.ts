@@ -8,6 +8,7 @@ import {
 import {
   ConversationStatus,
   MessageDirection,
+  Prisma,
   WhatsAppConnectionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -24,6 +25,21 @@ type RequestMeta = {
 };
 
 const AUDIT_BODY_MAX = 2000;
+
+export type SendWhatsappMetadata = {
+  source: string;
+  followUpId?: string;
+  attempt?: number;
+  [key: string]: unknown;
+};
+
+export type SendWhatsappInput = {
+  leadId: string;
+  conversationId: string;
+  body: string;
+  /** Merged into Message.metadata (P4-S1 / P4-D5). Defaults source=whatsapp_send */
+  metadata?: SendWhatsappMetadata;
+};
 
 export type SendWhatsappResult = {
   ok: true;
@@ -42,13 +58,28 @@ export class WhatsappSendService {
     private readonly evolution: EvolutionClient,
   ) {}
 
+  /** P4-F1 helper — check before FollowUp enters EXECUTING */
+  async assertConnected(companyId: string): Promise<void> {
+    const instance = await this.prisma.whatsAppInstance.findFirst({
+      where: { companyId, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (!instance) {
+      throw new ConflictException('WhatsApp instance not found');
+    }
+    if (instance.status !== WhatsAppConnectionStatus.CONNECTED) {
+      throw new ConflictException('WhatsApp instance not CONNECTED');
+    }
+  }
+
   /**
    * Authenticated outbound send.
    * Tenant = JWT.cid only. Never reads companyId from DTO/payload.
+   * P4-D1: FollowUp must call this — never create Message directly.
    */
   async send(
     actor: CompanyActor,
-    input: { leadId: string; conversationId: string; body: string },
+    input: SendWhatsappInput,
     meta?: RequestMeta,
   ): Promise<SendWhatsappResult> {
     const companyId = actor.cid;
@@ -77,7 +108,6 @@ export class WhatsappSendService {
       );
     }
 
-    // P3-C2 — CLOSED (and ARCHIVED) cannot receive send
     if (
       conversation.status === ConversationStatus.CLOSED ||
       conversation.status === ConversationStatus.ARCHIVED
@@ -97,7 +127,20 @@ export class WhatsappSendService {
       throw new ConflictException('WhatsApp instance not CONNECTED');
     }
 
-    // P3-O1 — create PENDING before Evolution call
+    const source = input.metadata?.source?.trim() || 'whatsapp_send';
+    const messageMetadata: Prisma.InputJsonObject = {
+      source,
+      whatsappInstanceId: instance.id,
+      evolutionInstanceName: instance.evolutionInstanceName,
+      ...(input.metadata?.followUpId
+        ? { followUpId: input.metadata.followUpId }
+        : {}),
+      ...(input.metadata?.attempt !== undefined
+        ? { attempt: input.metadata.attempt }
+        : {}),
+    };
+
+    // P3-O1 — create PENDING before Evolution call (P4-D4: each send = new Message)
     const pending = await this.prisma.message.create({
       data: {
         companyId,
@@ -109,11 +152,7 @@ export class WhatsappSendService {
         senderType: 'USER',
         senderUserId: actor.sub,
         externalMessageId: null,
-        metadata: {
-          source: 'whatsapp_send',
-          whatsappInstanceId: instance.id,
-          evolutionInstanceName: instance.evolutionInstanceName,
-        },
+        metadata: messageMetadata,
       },
     });
 
@@ -131,7 +170,6 @@ export class WhatsappSendService {
           ? error.message.slice(0, 1000)
           : 'Evolution send failed';
 
-      // P3-D1 — keep FAILED row; never delete
       await this.prisma.$transaction(async (tx) => {
         await tx.message.update({
           where: { id: pending.id },
@@ -183,7 +221,6 @@ export class WhatsappSendService {
         data: { lastMessageAt: now },
       });
 
-      // P3-T1
       await tx.lead.update({
         where: { id: lead.id },
         data: {
@@ -207,6 +244,7 @@ export class WhatsappSendService {
           status: OUTBOUND_MESSAGE_STATUS.SENT,
           externalMessageId,
           body: body.slice(0, AUDIT_BODY_MAX),
+          source,
         },
         ip: meta?.ip,
         userAgent: meta?.userAgent,

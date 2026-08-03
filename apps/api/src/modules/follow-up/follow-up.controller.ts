@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { ApproveFollowUpDto } from './dto/approve-follow-up.dto';
+import { CancelFollowUpDto } from './dto/cancel-follow-up.dto';
 import { CreateFollowUpDto } from './dto/create-follow-up.dto';
 import { ListFollowUpsQueryDto } from './dto/list-follow-ups.query.dto';
 import { RejectFollowUpDto } from './dto/reject-follow-up.dto';
@@ -87,7 +88,9 @@ export class FollowUpController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Approve follow-up (SUGGESTED → APPROVED)' })
+  @ApiOperation({
+    summary: 'Approve follow-up (SUGGESTED → SCHEDULED) — Phase 4 P4-A1',
+  })
   approve(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -132,11 +135,29 @@ export class FollowUpController {
     });
   }
 
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Cancel follow-up (SUGGESTED|APPROVED|SCHEDULED → CANCELLED). Not EXECUTED.',
+  })
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelFollowUpDto,
+    @Req() req: Request,
+  ) {
+    return this.followUpService.cancel(this.asCompanyActor(user), id, dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Post(':id/execute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Execute follow-up manually: creates OUTBOUND message (no WhatsApp send)',
+      'Execute SCHEDULED follow-up via WhatsApp Outbound Engine (EXECUTING → EXECUTED|FAILED)',
   })
   execute(
     @CurrentUser() user: AuthenticatedUser,
@@ -144,6 +165,23 @@ export class FollowUpController {
     @Req() req: Request,
   ) {
     return this.followUpService.execute(this.asCompanyActor(user), id, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post(':id/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Retry FAILED follow-up (max 3 attempts). Creates a new OUTBOUND Message.',
+  })
+  retry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.followUpService.retry(this.asCompanyActor(user), id, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
