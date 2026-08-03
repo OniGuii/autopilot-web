@@ -1,10 +1,10 @@
 # WhatsApp Design — Evolution API Integration
 
-**Status:** Design para aprovação (**sem implementação**)  
-**Fase:** 7 — WhatsApp Integration (Design Only)  
+**Status:** Aprovado — decisões D1–D10 **congeladas**  
+**Fase:** 7 — WhatsApp Integration (Design)  
 **Pré-requisitos:** Auth, Leads, Conversations, Messages, FollowUps, Dashboard, Audit  
 **Stack alvo:** NestJS + Evolution API (WhatsApp)  
-**Restrição desta etapa:** **somente documentação** — sem código, sem `schema.prisma`, sem migrations, sem endpoints, sem controllers/services, sem tabelas, sem alteração de funcionalidades existentes.
+**Plano Fase 1:** `whatsapp-implementation-plan.md` (somente planejamento — sem código nesta etapa)
 
 Referências atuais do domínio:
 - `Conversation.externalThreadId`, `Message.externalMessageId` (já no schema)
@@ -12,6 +12,21 @@ Referências atuais do domínio:
 - Índice: `(company_id, external_message_id)`
 - Phone único por company (D6) + normalização digits-only (Leads)
 - FollowUp execute hoje: Message OUTBOUND **local** (sem envio)
+
+### Decisões congeladas (D1–D10)
+
+| ID | Decisão |
+|---|---|
+| **D1** | 1 Company = 1 WhatsAppInstance (MVP) |
+| **D2** | Conversation: reutilizar `OPEN`/`IDLE`; criar nova se `CLOSED`/`ARCHIVED` |
+| **D3** | Arquitetura: Webhook → Queue → Worker (impl. inicial pode ser síncrona) |
+| **D4** | Idempotência: `external_message_id`; partial unique futura `(company_id, external_message_id) WHERE deleted_at IS NULL` |
+| **D5** | Persistência de `WebhookEvent` obrigatória no roadmap |
+| **D6** | FollowUp futuro: `APPROVED → SCHEDULED → EXECUTING → EXECUTED/FAILED` |
+| **D7** | Webhook: `POST /api/whatsapp/webhook/:instanceKey` + header `X-Webhook-Secret` |
+| **D8** | Echo Messages Strategy (seção dedicada) |
+| **D9** | Auto Lead: `name=phone`, `phone=phone`, `status=NEW`, `ownerId=null`, `score=0` |
+| **D10** | IA assistiva: sugere → humano aprova → envia |
 
 ---
 
@@ -47,7 +62,7 @@ Representa o vínculo Company ↔ Evolution Instance.
 | `lastConnectedAt` / `lastError` | Observabilidade |
 | `createdAt` / `updatedAt` / `deletedAt` | padrão AutoPilot |
 
-**Cardinalidade proposta MVP:** **1 Company → 1 WhatsAppInstance ativa**  
+**Cardinalidade MVP (D1):** **1 Company → 1 WhatsAppInstance ativa**  
 (Multi-número / multi-instância = V2.)
 
 ### 2.2 `WebhookEvent`
@@ -238,11 +253,11 @@ Registrar WebhookEvent PROCESSED
 | Tópico | Decisão proposta |
 |---|---|
 | Telefone | Sempre digits-only (igual Leads MVP) |
-| Lead sem nome | `name = phone` ou `"WhatsApp {phone}"` até enriquecimento |
-| 1 conversation ativa por lead+canal | Preferir reutilizar OPEN/IDLE; se só CLOSED, reabrir ou criar nova (**decisão §12**) |
+| Lead sem nome (D9) | `name = phone`, `status = NEW`, `ownerId = null`, `score = 0`, `source = WHATSAPP` |
+| Conversation (D2) | Reutilizar se `OPEN` ou `IDLE`; **criar nova** se só existir `CLOSED`/`ARCHIVED` |
 | Mídia (imagem/áudio) | MVP texto; mídia → `contentType` + URL em metadata (fase posterior) |
 | Grupos | Fora do MVP (ignorar / IGNORED) |
-| From me (echo outbound) | Detectar e não duplicar inbound se já temos OUTBOUND com mesmo external id |
+| Echo outbound (D8) | Ver § Echo Messages Strategy |
 
 ### 5.2 Direção (já congelada no produto)
 
@@ -270,26 +285,73 @@ Cliente autenticado (JWT.cid)
 
 Estado atual (Fase 5): execute cria Message OUTBOUND **sem** Evolution.
 
-Estado alvo (Fase WhatsApp 4 do roadmap):
+Estado alvo (D6):
 
 ```text
+APPROVED → SCHEDULED → EXECUTING → EXECUTED | FAILED
+
 POST /api/follow-ups/:id/execute
-  → status EXECUTING (opcional)
-  → WhatsAppSendService.send({ companyId, conversationId, body: suggestedBody, senderUserId: sub })
+  → status EXECUTING
+  → WhatsAppSendService.send(...)
   → Evolution API
-  → sucesso:
-       Message OUTBOUND + externalMessageId
-       FollowUp EXECUTED + resultMessageId
-       Conversation.lastMessageAt
-       Audit FOLLOWUP_EXECUTE + MESSAGE_CREATE
-  → falha:
-       FollowUp FAILED (ou permanece SCHEDULED/APPROVED com erro)
-       Audit + lastError
-       NÃO marcar EXECUTED
+  → sucesso: Message OUTBOUND + EXECUTED + audits
+  → falha: FAILED + lastError (não marcar EXECUTED)
 ```
 
 **Decisão de transição:** manter contrato do execute; trocar implementação interna de “persist-only” para “send+persist”.
 
+---
+
+## 12b. Echo Messages Strategy (D8)
+
+WhatsApp/Evolution frequentemente reenviam (ou espelham) mensagens **enviadas pela própria empresa** como eventos inbound (`fromMe=true` / equivalente).
+
+### Problema
+Sem tratamento, o mesmo texto vira:
+1. Message OUTBOUND (envio AutoPilot)  
+2. Message INBOUND duplicada (echo do webhook)
+
+### Estratégia congelada
+
+| Passo | Ação |
+|---|---|
+| 1 | Extrair `external_message_id` do evento |
+| 2 | Se já existe Message com esse id na company → **IGNORED** (idempotência D4) |
+| 3 | Se flag `fromMe` / `from_me` / key.fromMe = true **e** não há Message ainda: |
+| 3a | Preferir **não criar INBOUND**; opcionalmente upsert OUTBOUND se send local ainda não persistiu id |
+| 4 | Se outbound foi enviado pelo AutoPilot milissegundos antes, o id Evolution deve casar no passo 2 |
+| 5 | Registrar `WebhookEvent` como `IGNORED` com motivo `ECHO` ou `DUPLICATE_EXTERNAL_ID` |
+
+### Regras
+- Nunca criar Lead/Conversation só por echo `fromMe` sem conteúdo de cliente  
+- Echo **não** atualiza `lastInboundAt` do Lead  
+- Echo **pode** atualizar delivery status futuro via `MessageSync` (Fase 3+)
+
+---
+
+## 12c. Auto Lead Creation (D9)
+
+Quando inbound chega e não existe Lead `(companyId, phone)` ativo:
+
+| Campo | Valor |
+|---|---|
+| `name` | = `phone` (digits) |
+| `phone` | digits-only |
+| `status` | `NEW` |
+| `ownerId` | `null` |
+| `score` | `0` |
+| `source` | `WHATSAPP` |
+| `companyId` | da instance |
+
+---
+
+## 12d. IA assistiva (D10)
+
+```text
+Sugere → Humano aprova → Envia
+```
+
+IA nunca envia sozinha. Alinhado a D3 domínio (Follow-Up híbrido).
 ---
 
 ## 7. Estados da conexão (conceitual)
@@ -320,21 +382,29 @@ Regras:
 
 ## 8. Idempotência
 
-### 8.1 Mensagens (`external_message_id`)
+### 8.1 Mensagens (`external_message_id`) — D4
 
 Estratégia:
 
 1. Extrair id estável do provider (Evolution `key.id` / equivalente)  
 2. Antes de insert: `findFirst({ companyId, externalMessageId, deletedAt: null })`  
 3. Se existir → **no-op** (HTTP 200)  
-4. Insert com unique parcial alvo: `(company_id, external_message_id) WHERE deleted_at IS NULL AND external_message_id IS NOT NULL`  
-   - Índice simples já existe; **unique parcial** é evolução de schema futura (não nesta etapa)
+4. **Partial unique futura** (schema em fase de implementação inbound):
 
-### 8.2 Webhooks duplicados
+```sql
+CREATE UNIQUE INDEX uq_messages_company_external_active
+ON messages (company_id, external_message_id)
+WHERE deleted_at IS NULL AND external_message_id IS NOT NULL;
+```
 
-1. Persistir `WebhookEvent` com chave (`instanceId`, `providerEventId`) ou hash do payload+eventType  
+Índice não-unique `(company_id, external_message_id)` já existe hoje.
+
+### 8.2 Webhooks duplicados — D5
+
+1. Persistir `WebhookEvent` (obrigatório no roadmap) com chave (`instanceId`/`instanceKey`, `providerEventId`) ou hash  
 2. Unique → segundo delivery vira `IGNORED`  
-3. Sempre responder **2xx** rápido após aceitar (processamento sync no MVP; async/fila = fase posterior)
+3. Arquitetura alvo (D3): Webhook → Queue → Worker  
+4. MVP pode processar **síncrono** no request, mas o contrato mental e o código devem permitir enfileirar sem redesign
 
 ### 8.3 Reprocessamento
 
@@ -345,6 +415,7 @@ Estratégia:
 ### 8.4 Outbound duplicado (FollowUp double-execute)
 
 - Manter `updateMany` condicional de status (já existe no FollowUp)  
+- Fluxo futuro (D6): `APPROVED → SCHEDULED → EXECUTING → EXECUTED|FAILED`  
 - Idempotência adicional: client `Idempotency-Key` (futuro)
 
 ---
@@ -377,7 +448,7 @@ Prefixo: `api`. **Não implementar nesta etapa.**
 | `POST` | `/api/whatsapp/connect` | JWT + company + OWNER/ADMIN | Provisiona/conecta instance; retorna QR |
 | `GET` | `/api/whatsapp/status` | JWT + company | Status da instance da company |
 | `POST` | `/api/whatsapp/disconnect` | JWT + company + OWNER/ADMIN | Logout/disconnect Evolution |
-| `POST` | `/api/whatsapp/webhook` | Público + secret | Receiver Evolution |
+| `POST` | `/api/whatsapp/webhook/:instanceKey` | Público + `X-Webhook-Secret` | Receiver Evolution (D7) |
 | `POST` | `/api/whatsapp/send-message` | JWT + company + roles | Envio manual outbound |
 
 ### Contratos esboço
@@ -393,12 +464,20 @@ Prefixo: `api`. **Não implementar nesta etapa.**
 { "companyId": "...", "status": "CONNECTED", "phoneNumber": "5511...", "lastConnectedAt": "..." }
 ```
 
-**webhook**
+**webhook** (D7)
+```http
+POST /api/whatsapp/webhook/:instanceKey
+X-Webhook-Secret: <secret>
+```
 ```json
 // Evolution payload (variável por versão)
 { "event": "messages.upsert", "instance": "company-slug", "data": { } }
 ```
 
+Validação:
+1. `instanceKey` path = `WhatsAppInstance` lookup key  
+2. Header `X-Webhook-Secret` === `instance.webhookSecret`  
+3. Se falhar → **401/403** (sem processar)
 **send-message**
 ```json
 { "conversationId": "<uuid>", "body": "Olá!" }
@@ -495,26 +574,17 @@ Regras (já no domínio):
 
 ---
 
-## 15. Decisões pedindo aprovação explícita
+## 15. Decisões — congeladas
 
-1. **1 instance ativa por Company** (recomendado MVP) vs N instances  
-2. **Conversation reuse:** reabrir CLOSED vs sempre criar nova no inbound  
-3. **Webhook processing:** sync no request (recomendado MVP) vs fila Redis imediata  
-4. **Unique parcial** em `(company_id, external_message_id)` na fase de schema  
-5. **Persistir WebhookEvent** desde Fase 2 (recomendado) vs só logs  
-6. **FollowUp execute:** adotar `EXECUTING` antes do send (recomendado)  
-7. **Path webhook:** `/api/whatsapp/webhook` público (pedido) + secret header  
+Ver tabela **D1–D10** no topo deste documento.  
+Não reabrir sem nova aprovação explícita.
 
 ---
 
-## 16. Fora de escopo desta etapa (confirmado)
+## 16. Fora de escopo do documento de design (histórico)
 
-- Qualquer alteração de código/schema/migration  
-- Criação de endpoints/controllers/services  
-- Criação de tabelas  
-- Mudança no comportamento atual de FollowUp execute  
-- Frontend QR  
-- IA / n8n  
+- Implementação nesta etapa de design  
+- Frontend QR (pertence à implementação Fase 1+)  
 
 ---
 
@@ -528,12 +598,13 @@ Regras (já no domínio):
 - [x] Estados de conexão  
 - [x] Endpoints futuros documentados  
 - [x] Seção WhatsApp Risks  
+- [x] Echo Messages Strategy (D8)  
 - [x] Roadmap em 5 fases  
-- [x] **Nenhuma implementação**
+- [x] Decisões D1–D10 congeladas  
 
 ---
 
 ## 18. Próximo passo
 
-**Aguardar aprovação** deste design (e decisões §15).  
-Somente após aprovação explícita iniciar **Fase 1 — Conexão** com implementação controlada.
+Ver **`whatsapp-implementation-plan.md`** — planejamento detalhado da **Fase 1 (Conexão)** sem código.  
+Implementação só após aprovação explícita do plano da Fase 1.
