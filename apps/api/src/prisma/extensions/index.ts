@@ -1,6 +1,5 @@
 /**
- * Prisma Client Extensions — scaffolds only.
- * Not registered on PrismaService yet.
+ * Prisma Client Extensions — activated on PrismaService.
  */
 export {
   TENANT_SCOPED_MODELS,

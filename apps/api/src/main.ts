@@ -1,8 +1,27 @@
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+
+function swaggerBasicAuth(user: string, password: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const header = req.headers.authorization;
+    if (header?.startsWith('Basic ')) {
+      const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+      const sep = decoded.indexOf(':');
+      const u = sep >= 0 ? decoded.slice(0, sep) : '';
+      const p = sep >= 0 ? decoded.slice(sep + 1) : '';
+      if (u === user && p === password) {
+        next();
+        return;
+      }
+    }
+    res.setHeader('WWW-Authenticate', 'Basic realm="AutoPilot API Docs"');
+    res.status(401).send('Authentication required');
+  };
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -10,7 +29,8 @@ async function bootstrap() {
 
   const port = configService.get<number>('port', 3001);
   const apiPrefix = configService.get<string>('apiPrefix', 'api');
-  const swaggerEnabled = configService.get<boolean>('swaggerEnabled', true);
+  const nodeEnv = configService.get<string>('nodeEnv', 'development');
+  const swaggerEnabled = configService.get<boolean>('swaggerEnabled', false);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -25,11 +45,29 @@ async function bootstrap() {
   });
 
   if (swaggerEnabled) {
+    const swaggerUser = configService.get<string>('swaggerUser');
+    const swaggerPassword = configService.get<string>('swaggerPassword');
+
+    if (nodeEnv === 'production') {
+      if (!swaggerUser || !swaggerPassword) {
+        throw new Error(
+          'SWAGGER_USER and SWAGGER_PASSWORD are required when Swagger is enabled in production',
+        );
+      }
+      app.use(
+        ['/docs', '/docs-json'],
+        swaggerBasicAuth(swaggerUser, swaggerPassword),
+      );
+    } else if (swaggerUser && swaggerPassword) {
+      app.use(
+        ['/docs', '/docs-json'],
+        swaggerBasicAuth(swaggerUser, swaggerPassword),
+      );
+    }
+
     const swaggerConfig = new DocumentBuilder()
       .setTitle('AutoPilot API')
-      .setDescription(
-        'Plataforma de recuperação e conversão de leads com IA. Fundação arquitetural do MVP.',
-      )
+      .setDescription('Plataforma de recuperação e conversão de leads com IA.')
       .setVersion('0.1.0')
       .addBearerAuth()
       .build();
@@ -39,10 +77,9 @@ async function bootstrap() {
   }
 
   await app.listen(port);
-  // eslint-disable-next-line no-console
+
   console.log(`AutoPilot API listening on http://localhost:${port}`);
   if (swaggerEnabled) {
-    // eslint-disable-next-line no-console
     console.log(`Swagger docs at http://localhost:${port}/docs`);
   }
 }

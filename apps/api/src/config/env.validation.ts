@@ -11,7 +11,13 @@ export const envValidationSchema = Joi.object({
     .default('development'),
   PORT: Joi.number().default(3001),
   API_PREFIX: Joi.string().default('api'),
-  SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  SWAGGER_ENABLED: Joi.string().valid('true', 'false').optional(),
+  SWAGGER_USER: Joi.string().allow('').optional(),
+  SWAGGER_PASSWORD: Joi.string().allow('').optional(),
+
+  THROTTLE_TTL_MS: Joi.number().default(60_000),
+  THROTTLE_LIMIT: Joi.number().default(120),
+  THROTTLE_AUTH_LIMIT: Joi.number().default(20),
 
   DATABASE_URL: Joi.string().min(1).required(),
 

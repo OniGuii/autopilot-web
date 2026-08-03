@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -26,7 +27,10 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email/password (company selection required next)' })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Login with email/password (company selection required next)',
+  })
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, {
       ip: req.ip,
@@ -39,7 +43,8 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Bind session to a company via Membership (companySlug validated server-side)',
+    summary:
+      'Bind session to a company via Membership (companySlug validated server-side)',
   })
   selectCompany(
     @CurrentUser() user: AuthenticatedUser,

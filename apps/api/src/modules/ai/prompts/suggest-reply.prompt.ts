@@ -1,7 +1,7 @@
 export type SuggestPromptTone = 'professional' | 'friendly' | 'concise';
 
 export type SuggestPromptMessage = {
-  direction: 'INBOUND' | 'OUTBOUND' | string;
+  direction: string;
   body: string;
 };
 
@@ -63,7 +63,11 @@ export function buildSuggestUserPrompt(input: BuildSuggestPromptInput): string {
   ];
 
   if (input.instruction?.trim()) {
-    parts.push('', '### Instrução adicional do agente', input.instruction.trim());
+    parts.push(
+      '',
+      '### Instrução adicional do agente',
+      input.instruction.trim(),
+    );
   }
 
   parts.push(

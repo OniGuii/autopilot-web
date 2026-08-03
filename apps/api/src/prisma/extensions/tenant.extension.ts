@@ -1,21 +1,14 @@
 import { Prisma } from '@prisma/client';
+import { getTenantCompanyId } from '../../core/tenancy/tenant-als';
 
 /**
- * Scaffold — Tenant Prisma Extension (NOT activated).
+ * Tenant Prisma Extension (activated).
  *
- * Future behavior:
- * - Require companyId on tenant-scoped reads/writes
- * - Reject cross-tenant where clauses
- * - Optionally inject companyId from TenantContext
- *
- * This file is intentionally inert: exporting helpers/types only.
- * Do NOT wire into PrismaService until explicitly approved.
- *
- * @see docs/tenant-safety.md
- * @see docs/prisma-extensions.md
+ * When ALS has companyId (JWT.cid via TenantInterceptor):
+ * injects/verifies companyId on tenant-scoped ops.
+ * Without context (webhook/auth/system): no injection.
  */
 
-/** Models that MUST be scoped by companyId (D10). */
 export const TENANT_SCOPED_MODELS = [
   'membership',
   'lead',
@@ -24,49 +17,76 @@ export const TENANT_SCOPED_MODELS = [
   'followUp',
   'event',
   'auditLog',
+  'whatsAppInstance',
+  'webhookEvent',
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];
 
-/** Models outside tenant ownership. */
-export const GLOBAL_MODELS = ['company', 'user'] as const;
+const TENANT_SCOPED_SET = new Set<string>(TENANT_SCOPED_MODELS);
+
+export const GLOBAL_MODELS = [
+  'company',
+  'user',
+  'session',
+  'refreshToken',
+] as const;
 
 export type TenantExtensionOptions = {
-  /**
-   * Resolved tenant for the current request/job.
-   * Undefined means "no tenant context" — future extension should fail closed
-   * on tenant-scoped operations when enforce is true.
-   */
-  companyId?: string;
-  /** When true, missing companyId on tenant ops throws. Default future: true. */
   enforce?: boolean;
 };
 
-/**
- * Placeholder factory for the future Prisma Client Extension.
- * Returns an empty extension object so the module typechecks without
- * changing PrismaClient behavior.
- */
-export function createTenantExtension(_options: TenantExtensionOptions = {}) {
-  // Intentionally empty — activation deferred.
-  // Future: Prisma.defineExtension({ query: { ... } })
-  return Prisma.defineExtension({
-    name: 'autopilot-tenant-scaffold',
-    // No query/model overrides yet.
-  });
+function isTenantScoped(model: string): boolean {
+  return TENANT_SCOPED_SET.has(model);
 }
 
-/**
- * Static helper for application services (usable before extension activation).
- * Validates that a payload/where companyId matches the active tenant.
- */
+function assertTenantMatch(
+  model: string,
+  expected: string,
+  actual: unknown,
+  kind: 'where' | 'data',
+): void {
+  if (actual === undefined || actual === null) return;
+  if (actual !== expected) {
+    throw new Error(
+      `[tenant] Cross-tenant ${kind} blocked on ${model}: expected=${expected} actual=${typeof actual === 'string' ? actual : JSON.stringify(actual)}`,
+    );
+  }
+}
+
+function mergeTenantWhere(
+  model: string,
+  where: Record<string, unknown> | undefined,
+  companyId: string,
+  enforce: boolean,
+): Record<string, unknown> {
+  if (enforce) {
+    assertTenantMatch(model, companyId, where?.companyId, 'where');
+  }
+  return { ...(where ?? {}), companyId };
+}
+
+function mergeTenantData(
+  model: string,
+  data: Record<string, unknown>,
+  companyId: string,
+  enforce: boolean,
+): Record<string, unknown> {
+  if (enforce) {
+    assertTenantMatch(model, companyId, data.companyId, 'data');
+  }
+  return { ...data, companyId };
+}
+
 export function assertSameTenant(
   expectedCompanyId: string | undefined,
   actualCompanyId: string | undefined,
   context = 'tenant-check',
 ): void {
   if (!expectedCompanyId) {
-    throw new Error(`[${context}] Missing expected companyId (tenant context).`);
+    throw new Error(
+      `[${context}] Missing expected companyId (tenant context).`,
+    );
   }
   if (!actualCompanyId) {
     throw new Error(`[${context}] Missing actual companyId on entity/input.`);
@@ -76,4 +96,123 @@ export function assertSameTenant(
       `[${context}] Cross-tenant violation: expected=${expectedCompanyId} actual=${actualCompanyId}`,
     );
   }
+}
+
+type QueryArgs = {
+  model: string;
+  args: {
+    where?: Record<string, unknown>;
+    data?: unknown;
+    [key: string]: unknown;
+  };
+  query: (args: unknown) => Promise<unknown>;
+};
+
+export function createTenantExtension(options: TenantExtensionOptions = {}) {
+  const enforce = options.enforce !== false;
+
+  const tenantQuery = {
+    async findMany({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          where: mergeTenantWhere(model, args.where, companyId, enforce),
+        };
+      }
+      return query(args);
+    },
+    async findFirst({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          where: mergeTenantWhere(model, args.where, companyId, enforce),
+        };
+      }
+      return query(args);
+    },
+    async count({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          where: mergeTenantWhere(model, args.where, companyId, enforce),
+        };
+      }
+      return query(args);
+    },
+    async create({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          data: mergeTenantData(
+            model,
+            args.data as Record<string, unknown>,
+            companyId,
+            enforce,
+          ),
+        };
+      }
+      return query(args);
+    },
+    async createMany({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        const data = args.data;
+        if (Array.isArray(data)) {
+          args = {
+            ...args,
+            data: data.map((row) =>
+              mergeTenantData(
+                model,
+                row as Record<string, unknown>,
+                companyId,
+                enforce,
+              ),
+            ),
+          };
+        } else if (data) {
+          args = {
+            ...args,
+            data: mergeTenantData(
+              model,
+              data as Record<string, unknown>,
+              companyId,
+              enforce,
+            ),
+          };
+        }
+      }
+      return query(args);
+    },
+    async updateMany({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          where: mergeTenantWhere(model, args.where, companyId, enforce),
+        };
+      }
+      return query(args);
+    },
+    async deleteMany({ model, args, query }: QueryArgs) {
+      const companyId = getTenantCompanyId();
+      if (companyId && isTenantScoped(model)) {
+        args = {
+          ...args,
+          where: mergeTenantWhere(model, args.where, companyId, enforce),
+        };
+      }
+      return query(args);
+    },
+  };
+
+  return Prisma.defineExtension({
+    name: 'autopilot-tenant',
+    query: {
+      $allModels: tenantQuery,
+    },
+  });
 }
