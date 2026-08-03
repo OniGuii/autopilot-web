@@ -1,9 +1,20 @@
 # Follow-Ups Design — Follow-Up Engine MVP
 
-**Status:** Design para aprovação (**sem implementação**)  
+**Status:** Aprovado → **implementado** (ver `followups-review.md`)  
 **Fase:** 5 — Follow-Up Engine MVP  
 **Pré-requisitos:** Auth + Leads + Conversations  
 **Referências:** `domain-decisions.md` (D3 híbrido, D7, D9, D10), `domain-model.md` (§5.7), `schema.prisma` (`FollowUp`, `Message`, `AuditLog`), `conversations-review.md`
+
+### Decisões congeladas na aprovação
+
+- `APPROVE` → status **`APPROVED`** (não materializa SCHEDULED)
+- `REJECT` → `reason` **obrigatório**
+- Ordenação listagem: **`scheduledAt ASC`** (nulls last)
+- `PATCH` gera **`FOLLOWUP_UPDATE`**
+- `EXECUTE` sem `conversationId` → **400**
+- `companyId` presente nas responses
+- Extra: `POST .../reschedule` + filtro `overdue=true`
+- Execute: Message OUTBOUND, `senderUserId=JWT.sub`, atualiza `lastMessageAt`
 
 ---
 
