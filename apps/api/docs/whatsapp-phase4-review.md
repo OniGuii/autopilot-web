@@ -138,11 +138,13 @@ Send resolve instance pela mesma company. Cross-tenant → 404.
 
 ```bash
 cd apps/api
-npx prisma migrate deploy
+npx prisma migrate deploy   # applied 20260803180000_followup_metadata
 npx prisma generate
-npm test -- --testPathPatterns='follow-up|whatsapp-send'
+npm test -- --testPathPatterns='follow-up|whatsapp-send|whatsapp'
 npm run build
 ```
+
+Resultado: **8 suites / 46 tests passed**; `nest build` OK.
 
 ---
 
