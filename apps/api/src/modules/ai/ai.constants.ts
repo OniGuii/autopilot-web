@@ -17,6 +17,10 @@ export const AI_MAX_COMPLETION_TOKENS = 400;
 export const AI_TEMPERATURE = 0.4;
 export const AI_OPENAI_TIMEOUT_MS = 25_000;
 
+/** Distributed Redis lock TTL (covers OpenAI timeout + buffer). */
+export const AI_GENERATION_LOCK_TTL_MS = 90_000;
+export const AI_GENERATION_LOCK_PREFIX = 'autopilot:ai:gen-lock:';
+
 export const AI_PROMPT_VERSION = 'suggest-reply.v1';
 
 /** Audit actions (Fase 5 — ajustes aprovados). */

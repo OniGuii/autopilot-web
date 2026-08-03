@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 
@@ -16,7 +20,7 @@ export type EvolutionSendResult = {
 
 /**
  * Thin Evolution API adapter.
- * When EVOLUTION_API_URL is empty, operates in stub mode (local/dev/tests).
+ * Stub mode (empty EVOLUTION_API_URL) is allowed only in development/test (P0).
  */
 @Injectable()
 export class EvolutionClient {
@@ -24,15 +28,33 @@ export class EvolutionClient {
   private readonly apiUrl: string | undefined;
   private readonly apiKey: string | undefined;
   private readonly publicApiUrl: string;
+  private readonly nodeEnv: string;
 
   constructor(config: ConfigService) {
     this.apiUrl = config.get<string>('evolution.apiUrl') || undefined;
     this.apiKey = config.get<string>('evolution.apiKey') || undefined;
-    this.publicApiUrl = config.get<string>('apiPublicUrl', 'http://localhost:3001');
+    this.publicApiUrl = config.get<string>(
+      'apiPublicUrl',
+      'http://localhost:3001',
+    );
+    this.nodeEnv = config.get<string>('nodeEnv', 'development');
   }
 
   isStubMode(): boolean {
     return !this.apiUrl;
+  }
+
+  /** Stub is forbidden outside development/test. */
+  assertStubAllowed(): void {
+    if (
+      this.isStubMode() &&
+      this.nodeEnv !== 'development' &&
+      this.nodeEnv !== 'test'
+    ) {
+      throw new ServiceUnavailableException(
+        'Evolution API URL is required outside development/test',
+      );
+    }
   }
 
   async ensureInstanceAndQr(input: {
@@ -41,6 +63,7 @@ export class EvolutionClient {
     webhookSecretPlain: string;
   }): Promise<EvolutionConnectResult> {
     if (this.isStubMode()) {
+      this.assertStubAllowed();
       this.logger.warn(
         `Evolution stub mode: fake QR for instance ${input.instanceName}`,
       );
@@ -53,7 +76,11 @@ export class EvolutionClient {
 
     // Best-effort Evolution v2-style calls; failures surface as ERROR status upstream.
     await this.createInstance(input.instanceName);
-    await this.setWebhook(input.instanceName, input.instanceKey, input.webhookSecretPlain);
+    await this.setWebhook(
+      input.instanceName,
+      input.instanceKey,
+      input.webhookSecretPlain,
+    );
     const qrCode = await this.fetchQr(input.instanceName);
 
     return {
@@ -64,12 +91,15 @@ export class EvolutionClient {
   }
 
   async logout(instanceName: string): Promise<void> {
-    if (this.isStubMode()) return;
+    if (this.isStubMode()) {
+      this.assertStubAllowed();
+      return;
+    }
     await this.request('DELETE', `/instance/logout/${instanceName}`);
   }
 
   /**
-   * Send plain text via Evolution (or stub id when EVOLUTION_API_URL empty).
+   * Send plain text via Evolution (or stub id when URL empty in dev/test).
    */
   async sendText(input: {
     instanceName: string;
@@ -77,6 +107,7 @@ export class EvolutionClient {
     text: string;
   }): Promise<EvolutionSendResult> {
     if (this.isStubMode()) {
+      this.assertStubAllowed();
       this.logger.warn(
         `Evolution stub mode: fake send for ${input.instanceName} → ${input.phone}`,
       );
@@ -160,11 +191,7 @@ export class EvolutionClient {
         },
         byEvents: false,
         base64: false,
-        events: [
-          'CONNECTION_UPDATE',
-          'MESSAGES_UPSERT',
-          'MESSAGES_UPDATE',
-        ],
+        events: ['CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE'],
       },
     });
   }
@@ -195,7 +222,9 @@ export class EvolutionClient {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Evolution ${method} ${path} → ${response.status}: ${text}`);
+      throw new Error(
+        `Evolution ${method} ${path} → ${response.status}: ${text}`,
+      );
     }
 
     if (response.status === 204) {

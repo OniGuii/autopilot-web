@@ -22,8 +22,8 @@ export default () => ({
   },
   apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
   jwt: {
-    accessSecret:
-      process.env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
+    // Validated by env.validation — no insecure fallback here (P0).
+    accessSecret: process.env.JWT_ACCESS_SECRET,
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshTtlDays: parseInt(process.env.JWT_REFRESH_TTL_DAYS ?? '7', 10),
   },

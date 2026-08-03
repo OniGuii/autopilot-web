@@ -18,6 +18,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       useFactory: (config: ConfigService) => {
         const expiresIn = config.get<string>('jwt.accessTtl', '15m');
         return {
+          // P0: secret validated at boot (required outside test; no insecure fallback).
           secret: config.getOrThrow<string>('jwt.accessSecret'),
           signOptions: {
             // nest/jsonwebtoken StringValue — keep as configured TTL string

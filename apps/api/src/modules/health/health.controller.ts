@@ -14,13 +14,13 @@ export class HealthController {
   }
 
   @Get('live')
-  @ApiOperation({ summary: 'Liveness probe (prepared)' })
+  @ApiOperation({ summary: 'Liveness probe (process up)' })
   getLive() {
     return this.healthService.getLive();
   }
 
   @Get('ready')
-  @ApiOperation({ summary: 'Readiness probe (prepared)' })
+  @ApiOperation({ summary: 'Readiness probe (Postgres + Redis)' })
   getReady() {
     return this.healthService.getReady();
   }
