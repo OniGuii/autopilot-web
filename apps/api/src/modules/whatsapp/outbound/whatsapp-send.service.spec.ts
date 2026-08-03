@@ -123,6 +123,9 @@ describe('WhatsappSendService', () => {
     });
 
     expect(messages[0]?.status).toBe(OUTBOUND_MESSAGE_STATUS.PENDING);
+    expect(messages[0]?.metadata).toEqual(
+      expect.objectContaining({ source: 'whatsapp_send' }),
+    );
     expect(evolution.sendText).toHaveBeenCalledWith({
       instanceName: 'aptest',
       phone: lead.phone,
@@ -231,4 +234,28 @@ describe('WhatsappSendService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('merges followup metadata into Message (P4-S1/D5)', async () => {
+    const { service, messages } = build();
+
+    await service.send(actor, {
+      leadId: lead.id,
+      conversationId: conversation.id,
+      body: 'via followup',
+      metadata: {
+        source: 'followup',
+        followUpId: 'fu-1',
+        attempt: 2,
+      },
+    });
+
+    expect(messages[0]?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'followup',
+        followUpId: 'fu-1',
+        attempt: 2,
+      }),
+    );
+  });
 });
+

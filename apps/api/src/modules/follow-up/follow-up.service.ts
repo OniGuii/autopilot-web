@@ -1,25 +1,28 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Channel,
-  FollowUp,
-  FollowUpStatus,
-  MessageDirection,
-  Prisma,
-} from '@prisma/client';
+import { Channel, FollowUp, FollowUpStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { WhatsappSendService } from '../whatsapp/outbound/whatsapp-send.service';
 import { ApproveFollowUpDto } from './dto/approve-follow-up.dto';
+import { CancelFollowUpDto } from './dto/cancel-follow-up.dto';
 import { CreateFollowUpDto } from './dto/create-follow-up.dto';
 import { ListFollowUpsQueryDto } from './dto/list-follow-ups.query.dto';
 import { RejectFollowUpDto } from './dto/reject-follow-up.dto';
 import { RescheduleFollowUpDto } from './dto/reschedule-follow-up.dto';
 import { UpdateFollowUpDto } from './dto/update-follow-up.dto';
+import {
+  FOLLOWUP_EXECUTING_TIMEOUT_MS,
+  FOLLOWUP_MAX_ATTEMPTS,
+  FOLLOWUP_MESSAGE_SOURCE,
+} from './follow-up.constants';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
 
@@ -28,13 +31,20 @@ type RequestMeta = {
   userAgent?: string;
 };
 
+type FollowUpMeta = {
+  attemptCount?: number;
+  lastError?: string;
+  executingTimedOutAt?: string;
+};
+
 const AUDIT_BODY_MAX = 2000;
 const EDITABLE_STATUSES: FollowUpStatus[] = [
   FollowUpStatus.SUGGESTED,
   FollowUpStatus.APPROVED,
   FollowUpStatus.SCHEDULED,
 ];
-const EXECUTABLE_STATUSES: FollowUpStatus[] = [
+const CANCELABLE_STATUSES: FollowUpStatus[] = [
+  FollowUpStatus.SUGGESTED,
   FollowUpStatus.APPROVED,
   FollowUpStatus.SCHEDULED,
 ];
@@ -59,6 +69,8 @@ export type FollowUpResponse = {
   suggestedBody: string | null;
   resultMessageId: string | null;
   cancelReason: string | null;
+  attemptCount: number;
+  metadata: FollowUpMeta | null;
   createdAt: Date;
   updatedAt: Date;
   lead?: { id: string; name: string | null; phone: string };
@@ -76,6 +88,7 @@ export class FollowUpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly whatsappSend: WhatsappSendService,
   ) {}
 
   async create(actor: CompanyActor, dto: CreateFollowUpDto, meta?: RequestMeta) {
@@ -108,6 +121,7 @@ export class FollowUpService {
           channel: dto.channel ?? Channel.WHATSAPP,
           scheduledAt: dto.scheduledAt ?? null,
           status: FollowUpStatus.SUGGESTED,
+          metadata: { attemptCount: 0 },
         },
       });
 
@@ -164,7 +178,7 @@ export class FollowUpService {
   }
 
   async findOne(actor: CompanyActor, id: string) {
-    const followUp = await this.prisma.followUp.findFirst({
+    let followUp = await this.prisma.followUp.findFirst({
       where: { id, companyId: actor.cid, deletedAt: null },
       include: {
         lead: { select: { id: true, name: true, phone: true } },
@@ -178,6 +192,9 @@ export class FollowUpService {
     if (!followUp) {
       throw new NotFoundException('Follow-up not found');
     }
+
+    // P4-X1 lazy reconcile
+    followUp = (await this.reconcileExecutingTimeout(followUp)) as typeof followUp;
 
     return this.toResponse(followUp, {
       lead: followUp.lead,
@@ -268,6 +285,9 @@ export class FollowUpService {
     });
   }
 
+  /**
+   * P4-A1 — approve always transitions to SCHEDULED.
+   */
   async approve(
     actor: CompanyActor,
     id: string,
@@ -281,16 +301,17 @@ export class FollowUpService {
       throw new ConflictException('Only SUGGESTED follow-ups can be approved');
     }
 
+    const scheduledAt =
+      dto.scheduledAt ?? existing.scheduledAt ?? new Date();
+
     return this.prisma.$transaction(async (tx) => {
       const followUp = await tx.followUp.update({
         where: { id: existing.id },
         data: {
-          status: FollowUpStatus.APPROVED,
+          status: FollowUpStatus.SCHEDULED,
           approvedBy: actor.sub,
           approvedAt: new Date(),
-          ...(dto.scheduledAt !== undefined
-            ? { scheduledAt: dto.scheduledAt }
-            : {}),
+          scheduledAt,
         },
       });
 
@@ -388,15 +409,116 @@ export class FollowUpService {
     });
   }
 
-  async execute(actor: CompanyActor, id: string, meta?: RequestMeta) {
+  /**
+   * P4-C1 — cancel SUGGESTED | APPROVED | SCHEDULED.
+   * EXECUTED (and EXECUTING/FAILED/REJECTED/CANCELLED) not allowed.
+   */
+  async cancel(
+    actor: CompanyActor,
+    id: string,
+    dto: CancelFollowUpDto,
+    meta?: RequestMeta,
+  ) {
     const companyId = actor.cid;
     const existing = await this.findActiveInCompany(companyId, id);
+    await this.reconcileExecutingTimeout(existing);
 
-    if (!EXECUTABLE_STATUSES.includes(existing.status)) {
+    const current = await this.findActiveInCompany(companyId, id);
+
+    if (current.status === FollowUpStatus.EXECUTED) {
+      throw new ConflictException('EXECUTED follow-ups cannot be cancelled');
+    }
+
+    if (!CANCELABLE_STATUSES.includes(current.status)) {
       throw new ConflictException(
-        'Only APPROVED or SCHEDULED follow-ups can be executed',
+        `Follow-up cannot be cancelled in status ${current.status}`,
       );
     }
+
+    return this.prisma.$transaction(async (tx) => {
+      const followUp = await tx.followUp.update({
+        where: { id: current.id },
+        data: {
+          status: FollowUpStatus.CANCELLED,
+          cancelReason: dto.reason?.trim() || null,
+        },
+      });
+
+      await this.audit.write(tx, {
+        companyId,
+        actorUserId: actor.sub,
+        action: 'FOLLOWUP_CANCEL',
+        targetType: 'FOLLOWUP',
+        targetId: followUp.id,
+        before: this.snapshot(current),
+        after: this.snapshot(followUp),
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+      });
+
+      return this.toResponse(followUp);
+    });
+  }
+
+  /**
+   * SCHEDULED → EXECUTING → WhatsApp send → EXECUTED | FAILED
+   * P4-D1/D2/D3 — never creates Message directly; uses WhatsappSendService.
+   * P4-F1 — CONNECTED check before EXECUTING.
+   */
+  async execute(actor: CompanyActor, id: string, meta?: RequestMeta) {
+    const companyId = actor.cid;
+    let existing = await this.findActiveInCompany(companyId, id);
+    existing = await this.reconcileExecutingTimeout(existing);
+
+    if (existing.status !== FollowUpStatus.SCHEDULED) {
+      throw new ConflictException(
+        'Only SCHEDULED follow-ups can be executed',
+      );
+    }
+
+    return this.runWhatsAppSend(actor, existing, {
+      fromStatus: FollowUpStatus.SCHEDULED,
+      isRetry: false,
+      meta,
+    });
+  }
+
+  /**
+   * P4-R3 — retry only FAILED; P4-R4 max 3 attempts; P4-D4 new Message each try.
+   */
+  async retry(actor: CompanyActor, id: string, meta?: RequestMeta) {
+    const companyId = actor.cid;
+    let existing = await this.findActiveInCompany(companyId, id);
+    existing = await this.reconcileExecutingTimeout(existing);
+
+    if (existing.status !== FollowUpStatus.FAILED) {
+      throw new ConflictException('Only FAILED follow-ups can be retried');
+    }
+
+    const attemptCount = this.getAttemptCount(existing);
+    if (attemptCount >= FOLLOWUP_MAX_ATTEMPTS) {
+      throw new ConflictException(
+        `Maximum of ${FOLLOWUP_MAX_ATTEMPTS} attempts reached`,
+      );
+    }
+
+    return this.runWhatsAppSend(actor, existing, {
+      fromStatus: FollowUpStatus.FAILED,
+      isRetry: true,
+      meta,
+    });
+  }
+
+  private async runWhatsAppSend(
+    actor: CompanyActor,
+    existing: FollowUp,
+    opts: {
+      fromStatus: FollowUpStatus;
+      isRetry: boolean;
+      meta?: RequestMeta;
+    },
+  ) {
+    const companyId = actor.cid;
 
     if (!existing.conversationId) {
       throw new BadRequestException(
@@ -408,94 +530,260 @@ export class FollowUpService {
       throw new BadRequestException('suggestedBody is required to execute');
     }
 
-    const conversation = await this.assertConversationForLead(
+    await this.assertConversationForLead(
       companyId,
       existing.conversationId,
       existing.leadId,
     );
 
-    const now = new Date();
+    // P4-F1 — 409 without entering EXECUTING
+    await this.whatsappSend.assertConnected(companyId);
 
-    return this.prisma.$transaction(async (tx) => {
-      // Conditional update to prevent double-execute races
-      const updated = await tx.followUp.updateMany({
-        where: {
-          id: existing.id,
+    const previousAttempts = this.getAttemptCount(existing);
+    if (previousAttempts >= FOLLOWUP_MAX_ATTEMPTS) {
+      throw new ConflictException(
+        `Maximum of ${FOLLOWUP_MAX_ATTEMPTS} attempts reached`,
+      );
+    }
+    const attempt = previousAttempts + 1;
+
+    const claimed = await this.prisma.followUp.updateMany({
+      where: {
+        id: existing.id,
+        companyId,
+        status: opts.fromStatus,
+        deletedAt: null,
+      },
+      data: {
+        status: FollowUpStatus.EXECUTING,
+        metadata: {
+          ...this.readMeta(existing),
+          attemptCount: attempt,
+        } satisfies FollowUpMeta,
+        cancelReason: null,
+      },
+    });
+
+    if (claimed.count !== 1) {
+      throw new ConflictException('Follow-up is no longer executable');
+    }
+
+    if (opts.isRetry) {
+      await this.prisma.$transaction(async (tx) => {
+        await this.audit.write(tx, {
           companyId,
-          status: { in: EXECUTABLE_STATUSES },
-          deletedAt: null,
-        },
-        data: {
-          status: FollowUpStatus.EXECUTED,
-          executedAt: now,
-        },
+          actorUserId: actor.sub,
+          action: 'FOLLOWUP_RETRY',
+          targetType: 'FOLLOWUP',
+          targetId: existing.id,
+          before: this.snapshot(existing),
+          after: {
+            status: FollowUpStatus.EXECUTING,
+            attempt,
+          },
+          ip: opts.meta?.ip,
+          userAgent: opts.meta?.userAgent,
+        });
       });
+    }
 
-      if (updated.count !== 1) {
-        throw new ConflictException('Follow-up is no longer executable');
-      }
-
-      const message = await tx.message.create({
-        data: {
-          companyId,
-          conversationId: conversation.id,
-          direction: MessageDirection.OUTBOUND,
+    try {
+      // P4-D1/D3/D5 — Message created only by Outbound Engine
+      const sent = await this.whatsappSend.send(
+        actor,
+        {
+          leadId: existing.leadId,
+          conversationId: existing.conversationId,
           body: existing.suggestedBody,
-          status: 'SENT',
-          contentType: 'TEXT',
-          senderType: 'USER',
-          senderUserId: actor.sub,
-          sentAt: now,
+          metadata: {
+            source: FOLLOWUP_MESSAGE_SOURCE,
+            followUpId: existing.id,
+            attempt,
+          },
         },
-      });
+        opts.meta,
+      );
 
-      await tx.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: now },
-      });
+      const now = new Date();
+      const followUp = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.followUp.update({
+          where: { id: existing.id },
+          data: {
+            status: FollowUpStatus.EXECUTED,
+            executedAt: now,
+            resultMessageId: sent.messageId,
+            metadata: {
+              ...this.readMeta(existing),
+              attemptCount: attempt,
+            },
+          },
+        });
 
-      const followUp = await tx.followUp.update({
-        where: { id: existing.id },
-        data: { resultMessageId: message.id },
-      });
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: actor.sub,
+          action: 'FOLLOWUP_EXECUTE',
+          targetType: 'FOLLOWUP',
+          targetId: updated.id,
+          before: {
+            status: FollowUpStatus.EXECUTING,
+            attempt,
+          },
+          after: this.snapshot(updated),
+          ip: opts.meta?.ip,
+          userAgent: opts.meta?.userAgent,
+        });
 
-      await this.audit.write(tx, {
-        companyId,
-        actorUserId: actor.sub,
-        action: 'FOLLOWUP_EXECUTE',
-        targetType: 'FOLLOWUP',
-        targetId: followUp.id,
-        before: this.snapshot(existing),
-        after: this.snapshot(followUp),
-        ip: meta?.ip,
-        userAgent: meta?.userAgent,
-      });
-
-      await this.audit.write(tx, {
-        companyId,
-        actorUserId: actor.sub,
-        action: 'MESSAGE_CREATE',
-        targetType: 'MESSAGE',
-        targetId: message.id,
-        before: null,
-        after: {
-          id: message.id,
-          companyId: message.companyId,
-          conversationId: message.conversationId,
-          direction: message.direction,
-          status: message.status,
-          body: this.truncateBody(message.body),
-          senderType: message.senderType,
-          senderUserId: message.senderUserId,
-          sentAt: message.sentAt?.toISOString() ?? null,
-          followUpId: followUp.id,
-        },
-        ip: meta?.ip,
-        userAgent: meta?.userAgent,
+        return updated;
       });
 
       return this.toResponse(followUp);
+    } catch (error) {
+      const messageId = this.extractFailedMessageId(error);
+      const errorMessage = this.extractErrorMessage(error);
+
+      const followUp = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.followUp.update({
+          where: { id: existing.id },
+          data: {
+            status: FollowUpStatus.FAILED,
+            resultMessageId: messageId,
+            cancelReason: errorMessage.slice(0, 500),
+            metadata: {
+              ...this.readMeta(existing),
+              attemptCount: attempt,
+              lastError: errorMessage.slice(0, 1000),
+            },
+          },
+        });
+
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: actor.sub,
+          action: 'FOLLOWUP_EXECUTE_FAILED',
+          targetType: 'FOLLOWUP',
+          targetId: updated.id,
+          before: {
+            status: FollowUpStatus.EXECUTING,
+            attempt,
+          },
+          after: this.snapshot(updated),
+          ip: opts.meta?.ip,
+          userAgent: opts.meta?.userAgent,
+        });
+
+        return updated;
+      });
+
+      // Surface original HTTP error when useful (e.g. 502), else 409 conflict-like FAILED
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+      if (error instanceof BadGatewayException) {
+        throw new BadGatewayException({
+          message: 'Follow-up WhatsApp send failed',
+          followUpId: followUp.id,
+          status: FollowUpStatus.FAILED,
+          messageId,
+          error: errorMessage,
+        });
+      }
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new BadGatewayException({
+        message: 'Follow-up WhatsApp send failed',
+        followUpId: followUp.id,
+        status: FollowUpStatus.FAILED,
+        messageId,
+        error: errorMessage,
+      });
+    }
+  }
+
+  /**
+   * P4-X1 — if EXECUTING longer than 5 minutes, mark FAILED (lazy).
+   */
+  private async reconcileExecutingTimeout(followUp: FollowUp): Promise<FollowUp> {
+    if (followUp.status !== FollowUpStatus.EXECUTING) {
+      return followUp;
+    }
+
+    const age = Date.now() - followUp.updatedAt.getTime();
+    if (age <= FOLLOWUP_EXECUTING_TIMEOUT_MS) {
+      return followUp;
+    }
+
+    const meta = this.readMeta(followUp);
+    const updated = await this.prisma.followUp.update({
+      where: { id: followUp.id },
+      data: {
+        status: FollowUpStatus.FAILED,
+        cancelReason: 'EXECUTING_TIMEOUT',
+        metadata: {
+          ...meta,
+          lastError: 'EXECUTING_TIMEOUT',
+          executingTimedOutAt: new Date().toISOString(),
+        },
+      },
     });
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.audit.write(tx, {
+        companyId: followUp.companyId,
+        actorUserId: null,
+        action: 'FOLLOWUP_EXECUTE_FAILED',
+        targetType: 'FOLLOWUP',
+        targetId: followUp.id,
+        before: { status: FollowUpStatus.EXECUTING },
+        after: this.snapshot(updated),
+      });
+    });
+
+    return updated;
+  }
+
+  private getAttemptCount(followUp: FollowUp): number {
+    const n = this.readMeta(followUp).attemptCount;
+    return typeof n === 'number' && n >= 0 ? n : 0;
+  }
+
+  private readMeta(followUp: FollowUp): FollowUpMeta {
+    if (
+      followUp.metadata &&
+      typeof followUp.metadata === 'object' &&
+      !Array.isArray(followUp.metadata)
+    ) {
+      return followUp.metadata as FollowUpMeta;
+    }
+    return {};
+  }
+
+  private extractFailedMessageId(error: unknown): string | null {
+    if (!(error instanceof HttpException)) return null;
+    const res = error.getResponse();
+    if (typeof res === 'object' && res !== null && 'messageId' in res) {
+      const id = (res as { messageId?: unknown }).messageId;
+      return typeof id === 'string' ? id : null;
+    }
+    return null;
+  }
+
+  private extractErrorMessage(error: unknown): string {
+    if (error instanceof HttpException) {
+      const res = error.getResponse();
+      if (typeof res === 'string') return res;
+      if (typeof res === 'object' && res !== null) {
+        const obj = res as { error?: unknown; message?: unknown };
+        if (typeof obj.error === 'string') return obj.error;
+        if (typeof obj.message === 'string') return obj.message;
+        if (Array.isArray(obj.message)) return obj.message.join(', ');
+      }
+      return error.message;
+    }
+    if (error instanceof Error) return error.message;
+    return 'Unknown send error';
   }
 
   private buildListWhere(
@@ -520,7 +808,6 @@ export class FollowUpService {
         in: [FollowUpStatus.APPROVED, FollowUpStatus.SCHEDULED],
       };
       scheduledAtFilter.lt = new Date();
-      // overdue implies scheduledAt is set
       scheduledAtFilter.not = null;
     }
 
@@ -528,14 +815,11 @@ export class FollowUpService {
       where.scheduledAt = scheduledAtFilter;
     }
 
-    // Explicit status filter wins over overdue status set if both passed —
-    // if both provided, intersect: require the explicit status to be overdue-eligible
     if (query.overdue === true && query.status) {
       if (
         query.status !== FollowUpStatus.APPROVED &&
         query.status !== FollowUpStatus.SCHEDULED
       ) {
-        // impossible combo → empty result
         where.id = '00000000-0000-4000-8000-000000000000';
       } else {
         where.status = query.status;
@@ -627,6 +911,7 @@ export class FollowUpService {
       executedAt: f.executedAt?.toISOString() ?? null,
       resultMessageId: f.resultMessageId,
       cancelReason: f.cancelReason,
+      attemptCount: this.getAttemptCount(f),
       deletedAt: f.deletedAt?.toISOString() ?? null,
     };
   }
@@ -644,6 +929,7 @@ export class FollowUpService {
       } | null;
     },
   ): FollowUpResponse {
+    const meta = this.readMeta(f);
     return {
       id: f.id,
       companyId: f.companyId,
@@ -660,6 +946,8 @@ export class FollowUpService {
       suggestedBody: f.suggestedBody,
       resultMessageId: f.resultMessageId,
       cancelReason: f.cancelReason,
+      attemptCount: this.getAttemptCount(f),
+      metadata: Object.keys(meta).length ? meta : null,
       createdAt: f.createdAt,
       updatedAt: f.updatedAt,
       ...(extras?.lead ? { lead: extras.lead } : {}),

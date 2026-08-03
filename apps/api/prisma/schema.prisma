@@ -343,6 +343,8 @@ model FollowUp {
   suggestedBody   String?        @map("suggested_body")
   resultMessageId String?        @map("result_message_id") @db.Uuid
   cancelReason    String?        @map("cancel_reason") @db.VarChar(500)
+  /// Phase 4: { attemptCount } for retry limits (P4-R4)
+  metadata        Json?
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz(6)

@@ -6,7 +6,8 @@ export class ApproveFollowUpDto {
   @ApiPropertyOptional({
     type: String,
     format: 'date-time',
-    description: 'Optional schedule timestamp kept on the APPROVED follow-up',
+    description:
+      'Optional schedule timestamp (P4-A1: approve → SCHEDULED; defaults to now)',
   })
   @IsOptional()
   @Type(() => Date)
