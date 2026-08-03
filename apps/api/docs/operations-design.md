@@ -30,29 +30,24 @@ Projetar a **camada operacional** do AutoPilot para que OWNER/ADMIN (e, em leitu
 ## 2. Arquitetura operacional (visão)
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    AutoPilot Operations                      │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ Ops Dashboard│  │ Audit        │  │ Webhook Monitor  │  │
-│  │ (UI + APIs)  │  │ Explorer     │  │                  │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
-│         │                 │                    │            │
-│  ┌──────▼─────────────────▼────────────────────▼─────────┐  │
-│  │              Ops Query Services (NestJS)               │  │
-│  │  companyId = JWT.cid  ·  roles OWNER|ADMIN|(AGENT RO) │  │
-│  └──────┬─────────────────� JWT.cid  ·  roles OWNER|ADMIN|(AGENT RO) │  │
-│  └──────┬─────────────────┬──────────────────┬───────────┘  │
-│         │                 │                  │              │
-│         ▼                 ▼                  ▼              │
-│   Dashboard KPIs    AuditLog           WebhookEvent         │
-│   Message/FollowUp  Lead/Conversation  WhatsAppInstance     │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Reconcile / Health                                    │  │
-│  │  GET /health/*  ·  POST /ops/reconcile (admin)        │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                   AutoPilot Operations                           |
+|                                                                  |
+|  [Ops Dashboard]   [Audit Explorer]   [Webhook Monitor]          |
+|         |                 |                    |                 |
+|         +-----------------+--------------------+                 |
+|                           |                                      |
+|              Ops Query Services (NestJS)                         |
+|         companyId = JWT.cid · roles OWNER|ADMIN|(AGENT RO)       |
+|                           |                                      |
+|         +-----------------+--------------------+                 |
+|         v                 v                    v                 |
+|  Message/FollowUp    AuditLog            WebhookEvent            |
+|  WhatsAppInstance    Lead/Conversation   Dashboard KPIs          |
+|                                                                  |
+|  Reconcile / Health                                              |
+|  GET /health/*  ·  POST /api/ops/reconcile (admin)               |
++------------------------------------------------------------------+
 ```
 
 Princípios:
