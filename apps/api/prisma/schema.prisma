@@ -83,6 +83,14 @@ enum WhatsAppConnectionStatus {
   ERROR
 }
 
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+  DUPLICATE
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -108,6 +116,7 @@ model Company {
   sessions      Session[]
   refreshTokens RefreshToken[]
   whatsappInstances WhatsAppInstance[]
+  webhookEvents     WebhookEvent[]
 
   @@index([status])
   @@index([slug])
@@ -421,9 +430,37 @@ model WhatsAppInstance {
   updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt             DateTime?                 @map("deleted_at") @db.Timestamptz(6)
 
-  company Company @relation(fields: [companyId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id])
+  webhookEvents WebhookEvent[]
 
   @@index([companyId])
   @@index([status])
   @@map("whatsapp_instances")
+}
+
+/// Raw Evolution webhook log (D5 / P2-W1). Append-oriented.
+model WebhookEvent {
+  id              String             @id @default(uuid()) @db.Uuid
+  companyId       String             @map("company_id") @db.Uuid
+  instanceId      String             @map("instance_id") @db.Uuid
+  /// Provider event id when available — partial unique for event-level idempotency
+  externalEventId String?            @map("external_event_id") @db.VarChar(191)
+  eventType       String             @map("event_type") @db.VarChar(120)
+  payload         Json
+  status          WebhookEventStatus @default(RECEIVED)
+  error           String?            @db.VarChar(1000)
+  receivedAt      DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime?          @map("processed_at") @db.Timestamptz(6)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  company  Company          @relation(fields: [companyId], references: [id])
+  instance WhatsAppInstance @relation(fields: [instanceId], references: [id])
+
+  @@index([companyId, receivedAt])
+  @@index([companyId, status])
+  @@index([instanceId, receivedAt])
+  @@index([companyId, externalEventId])
+  @@map("webhook_events")
 }

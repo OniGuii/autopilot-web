@@ -25,7 +25,7 @@ Referências atuais do domínio:
 | **D6** | FollowUp futuro: `APPROVED → SCHEDULED → EXECUTING → EXECUTED/FAILED` |
 | **D7** | Webhook: `POST /api/whatsapp/webhook/:instanceKey` + header `X-Webhook-Secret` |
 | **D8** | Echo Messages Strategy (seção dedicada) |
-| **D9** | Auto Lead: `name=phone`, `phone=phone`, `status=NEW`, `ownerId=null`, `score=0` |
+| **D9** | Auto Lead inbound: `name=phone`, `phone=phone`, `status=CONTACTED` (P2-L1; substitui NEW), `ownerId=null`, `score=0` |
 | **D10** | IA assistiva: sugere → humano aprova → envia |
 
 ---
@@ -253,7 +253,7 @@ Registrar WebhookEvent PROCESSED
 | Tópico | Decisão proposta |
 |---|---|
 | Telefone | Sempre digits-only (igual Leads MVP) |
-| Lead sem nome (D9) | `name = phone`, `status = NEW`, `ownerId = null`, `score = 0`, `source = WHATSAPP` |
+| Lead sem nome (D9/P2-L1) | `name = phone`, `status = CONTACTED`, `ownerId = null`, `score = 0`, `source = WHATSAPP` |
 | Conversation (D2) | Reutilizar se `OPEN` ou `IDLE`; **criar nova** se só existir `CLOSED`/`ARCHIVED` |
 | Mídia (imagem/áudio) | MVP texto; mídia → `contentType` + URL em metadata (fase posterior) |
 | Grupos | Fora do MVP (ignorar / IGNORED) |
@@ -337,7 +337,7 @@ Quando inbound chega e não existe Lead `(companyId, phone)` ativo:
 |---|---|
 | `name` | = `phone` (digits) |
 | `phone` | digits-only |
-| `status` | `NEW` |
+| `status` | `CONTACTED` (P2-L1; inbound WhatsApp) |
 | `ownerId` | `null` |
 | `score` | `0` |
 | `source` | `WHATSAPP` |

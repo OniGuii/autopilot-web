@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  Prisma,
+  WebhookEventStatus,
   WhatsAppConnectionStatus,
   WhatsAppInstance,
 } from '@prisma/client';
@@ -14,6 +16,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { EvolutionClient } from './evolution.client';
+import {
+  extractExternalEventId,
+  isMessageEvent,
+  parseInboundMessage,
+} from './inbound/parse-inbound-message';
+import { WhatsappInboundService } from './inbound/whatsapp-inbound.service';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
 
@@ -33,12 +41,24 @@ export type WhatsAppStatusResponse = {
   lastError?: string | null;
 };
 
+export type WebhookResponse = {
+  ok: true;
+  ignored?: boolean;
+  duplicate?: boolean;
+  status?: WhatsAppConnectionStatus;
+  messageId?: string;
+  leadId?: string;
+  conversationId?: string;
+  reason?: string;
+};
+
 @Injectable()
 export class WhatsappService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly evolution: EvolutionClient,
+    private readonly inbound: WhatsappInboundService,
   ) {}
 
   async connect(
@@ -134,14 +154,15 @@ export class WhatsappService {
   }
 
   /**
-   * Public webhook — connection events only (D17).
-   * Validates X-Webhook-Secret against argon2 hash (D7/D12).
+   * Public webhook — connection (Fase 1) + inbound messages (Fase 2).
+   * Tenant ONLY from WhatsAppInstance.instanceKey (never payload.companyId).
+   * P2-S1: inbound accepted even when status != CONNECTED.
    */
   async handleWebhook(
     instanceKey: string,
     secretHeader: string | undefined,
     payload: Record<string, unknown>,
-  ): Promise<{ ok: true; ignored?: boolean; status?: WhatsAppConnectionStatus }> {
+  ): Promise<WebhookResponse> {
     if (!secretHeader) {
       throw new UnauthorizedException('Missing X-Webhook-Secret');
     }
@@ -161,14 +182,120 @@ export class WhatsappService {
       throw new ForbiddenException('Invalid webhook secret');
     }
 
-    const eventName = this.extractEventName(payload);
-    if (!eventName || !this.isConnectionEvent(eventName)) {
-      return { ok: true, ignored: true };
+    // companyId exclusively from instance — ignore any payload.companyId
+    const companyId = instance.companyId;
+    const eventName = this.extractEventName(payload) ?? 'unknown';
+
+    const externalEventId = extractExternalEventId(payload);
+
+    const webhookEvent = await this.registerWebhookEvent({
+      companyId,
+      instanceId: instance.id,
+      eventType: eventName,
+      externalEventId,
+      payload,
+    });
+
+    if (webhookEvent.duplicate) {
+      return { ok: true, duplicate: true };
     }
 
+    try {
+      if (this.isConnectionEvent(eventName)) {
+        const result = await this.processConnectionEvent(instance, payload);
+        await this.finalizeWebhookEvent(
+          webhookEvent.id,
+          result.ignored
+            ? WebhookEventStatus.IGNORED
+            : WebhookEventStatus.PROCESSED,
+          result.ignored ? 'NO_STATUS_CHANGE_OR_UNMAPPED' : null,
+        );
+        return result;
+      }
+
+      if (isMessageEvent(eventName)) {
+        return await this.processMessageEvent(
+          instance,
+          companyId,
+          payload,
+          webhookEvent.id,
+        );
+      }
+
+      await this.finalizeWebhookEvent(
+        webhookEvent.id,
+        WebhookEventStatus.IGNORED,
+        'UNSUPPORTED_EVENT',
+      );
+      return { ok: true, ignored: true, reason: 'UNSUPPORTED_EVENT' };
+    } catch (error) {
+      await this.finalizeWebhookEvent(
+        webhookEvent.id,
+        WebhookEventStatus.FAILED,
+        error instanceof Error ? error.message.slice(0, 1000) : 'UNKNOWN_ERROR',
+      );
+      throw error;
+    }
+  }
+
+  private async processMessageEvent(
+    instance: WhatsAppInstance,
+    companyId: string,
+    payload: Record<string, unknown>,
+    webhookEventId: string,
+  ): Promise<WebhookResponse> {
+    const parsed = parseInboundMessage(payload);
+    if (!parsed.ok) {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.IGNORED,
+        parsed.reason,
+      );
+      return { ok: true, ignored: true, reason: parsed.reason };
+    }
+
+    const result = await this.inbound.processInboundMessage(
+      companyId,
+      parsed.message,
+      instance,
+    );
+
+    if (result.duplicate) {
+      await this.finalizeWebhookEvent(
+        webhookEventId,
+        WebhookEventStatus.DUPLICATE,
+        'DUPLICATE_EXTERNAL_MESSAGE_ID',
+      );
+      return {
+        ok: true,
+        duplicate: true,
+        messageId: result.messageId,
+        leadId: result.leadId,
+        conversationId: result.conversationId,
+      };
+    }
+
+    await this.finalizeWebhookEvent(
+      webhookEventId,
+      WebhookEventStatus.PROCESSED,
+      null,
+    );
+
+    return {
+      ok: true,
+      messageId: result.messageId,
+      leadId: result.leadId,
+      conversationId: result.conversationId,
+    };
+  }
+
+  private async processConnectionEvent(
+    instance: WhatsAppInstance,
+    payload: Record<string, unknown>,
+  ): Promise<WebhookResponse> {
     const mapped = this.mapConnectionStatus(payload);
     if (!mapped) {
-      return { ok: true, ignored: true };
+      return { ok: true, ignored: true, reason: 'UNMAPPED_CONNECTION' };
     }
 
     if (
@@ -236,6 +363,88 @@ export class WhatsappService {
     });
 
     return { ok: true, status: updated.status };
+  }
+
+  private async registerWebhookEvent(input: {
+    companyId: string;
+    instanceId: string;
+    eventType: string;
+    externalEventId: string | null;
+    payload: Record<string, unknown>;
+  }): Promise<{ id: string; duplicate: boolean }> {
+    const safePayload = this.truncatePayload(input.payload);
+
+    try {
+      const created = await this.prisma.webhookEvent.create({
+        data: {
+          companyId: input.companyId,
+          instanceId: input.instanceId,
+          eventType: input.eventType.slice(0, 120),
+          externalEventId: input.externalEventId,
+          payload: safePayload as Prisma.InputJsonValue,
+          status: WebhookEventStatus.RECEIVED,
+        },
+        select: { id: true },
+      });
+      return { id: created.id, duplicate: false };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        input.externalEventId
+      ) {
+        const existing = await this.prisma.webhookEvent.findFirst({
+          where: {
+            companyId: input.companyId,
+            externalEventId: input.externalEventId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (existing) {
+          await this.prisma.webhookEvent.update({
+            where: { id: existing.id },
+            data: {
+              status: WebhookEventStatus.DUPLICATE,
+              processedAt: new Date(),
+              error: 'DUPLICATE_EXTERNAL_EVENT_ID',
+            },
+          });
+          return { id: existing.id, duplicate: true };
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async finalizeWebhookEvent(
+    id: string,
+    status: WebhookEventStatus,
+    error: string | null,
+  ): Promise<void> {
+    await this.prisma.webhookEvent.update({
+      where: { id },
+      data: {
+        status,
+        error,
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  private truncatePayload(
+    payload: Record<string, unknown>,
+  ): Record<string, unknown> {
+    try {
+      const raw = JSON.stringify(payload);
+      if (raw.length <= 50_000) return payload;
+      return {
+        truncated: true,
+        preview: raw.slice(0, 50_000),
+      };
+    } catch {
+      return { truncated: true, error: 'UNSERIALIZABLE_PAYLOAD' };
+    }
   }
 
   private async createNewInstance(

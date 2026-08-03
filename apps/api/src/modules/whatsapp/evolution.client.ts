@@ -95,7 +95,7 @@ export class EvolutionClient {
         },
         byEvents: false,
         base64: false,
-        events: ['CONNECTION_UPDATE'],
+        events: ['CONNECTION_UPDATE', 'MESSAGES_UPSERT'],
       },
     });
   }
