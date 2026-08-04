@@ -151,9 +151,12 @@ export class LeadNotesService {
   private assertCanMutate(actor: CompanyActor, authorUserId: string) {
     const isAuthor = actor.sub === authorUserId;
     const isElevated =
-      actor.role === MembershipRole.OWNER || actor.role === MembershipRole.ADMIN;
+      actor.role === MembershipRole.OWNER ||
+      actor.role === MembershipRole.ADMIN;
     if (!isAuthor && !isElevated) {
-      throw new ForbiddenException('Only author or OWNER/ADMIN can modify note');
+      throw new ForbiddenException(
+        'Only author or OWNER/ADMIN can modify note',
+      );
     }
   }
 

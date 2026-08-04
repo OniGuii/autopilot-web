@@ -1,9 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  ConversationStatus,
-  MessageDirection,
-  Prisma,
-} from '@prisma/client';
+import { ConversationStatus, MessageDirection, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { TimelineQueryDto } from './dto/timeline.query.dto';
@@ -305,14 +301,18 @@ function truncate(value: string | null | undefined): string | null {
   return value.length > BODY_MAX ? value.slice(0, BODY_MAX) : value;
 }
 
-function asRecord(value: Prisma.JsonValue | null | undefined): Record<string, unknown> | null {
+function asRecord(
+  value: Prisma.JsonValue | null | undefined,
+): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+    return value;
   }
   return null;
 }
 
-function sanitizeJson(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+function sanitizeJson(
+  value: Prisma.JsonValue | null,
+): Record<string, unknown> | null {
   const record = asRecord(value);
   if (!record) return null;
   const copy = { ...record };

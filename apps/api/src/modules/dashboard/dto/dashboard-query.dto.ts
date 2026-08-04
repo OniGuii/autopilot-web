@@ -26,7 +26,8 @@ export class DashboardQueryDto {
   @ApiPropertyOptional({
     type: String,
     format: 'date-time',
-    description: 'Inclusive period start (filters createdAt of scoped entities)',
+    description:
+      'Inclusive period start (filters createdAt of scoped entities)',
   })
   @IsOptional()
   @Type(() => Date)

@@ -3,11 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  LeadActivity,
-  LeadActivityStatus,
-  Prisma,
-} from '@prisma/client';
+import { LeadActivity, LeadActivityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
@@ -59,7 +55,11 @@ export class LeadActivitiesService {
     await this.assertLeadInCompany(companyId, leadId);
 
     const userId =
-      dto.userId === undefined ? actor.sub : dto.userId === null ? null : dto.userId;
+      dto.userId === undefined
+        ? actor.sub
+        : dto.userId === null
+          ? null
+          : dto.userId;
     if (userId) {
       await this.assertActiveMember(companyId, userId);
     }
@@ -129,9 +129,7 @@ export class LeadActivitiesService {
     const existing = await this.findActive(companyId, leadId, id);
 
     if (TERMINAL.includes(existing.status)) {
-      throw new BadRequestException(
-        'DONE/CANCELLED activities are immutable',
-      );
+      throw new BadRequestException('DONE/CANCELLED activities are immutable');
     }
 
     if (dto.userId) {
@@ -251,12 +249,11 @@ export class LeadActivitiesService {
     to: LeadActivityStatus,
   ) {
     if (from !== LeadActivityStatus.PLANNED) {
-      throw new BadRequestException('Only PLANNED activities can change status');
+      throw new BadRequestException(
+        'Only PLANNED activities can change status',
+      );
     }
-    if (
-      to !== LeadActivityStatus.DONE &&
-      to !== LeadActivityStatus.CANCELLED
-    ) {
+    if (to !== LeadActivityStatus.DONE && to !== LeadActivityStatus.CANCELLED) {
       throw new BadRequestException(
         'PLANNED may only transition to DONE or CANCELLED',
       );

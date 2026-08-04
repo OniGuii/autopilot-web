@@ -13,11 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MembershipRole } from '@prisma/client';
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -62,7 +58,10 @@ export class LeadsController {
 
   @Get()
   @ApiOperation({ summary: 'List leads with filters and pagination' })
-  list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListLeadsQueryDto) {
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLeadsQueryDto,
+  ) {
     return this.leadsService.list(this.asCompanyActor(user), query);
   }
 
@@ -70,7 +69,8 @@ export class LeadsController {
   @HttpCode(HttpStatus.OK)
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
   @ApiOperation({
-    summary: 'Bulk assign/unassign leads (OWNER|ADMIN; ownerId null = unassign)',
+    summary:
+      'Bulk assign/unassign leads (OWNER|ADMIN; ownerId null = unassign)',
   })
   bulkAssign(
     @CurrentUser() user: AuthenticatedUser,
@@ -93,13 +93,19 @@ export class LeadsController {
   }
 
   @Get(':id/timeline')
-  @ApiOperation({ summary: 'Composed lead timeline (page/limit, occurredAt ASC)' })
+  @ApiOperation({
+    summary: 'Composed lead timeline (page/limit, occurredAt ASC)',
+  })
   timeline(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: TimelineQueryDto,
   ) {
-    return this.timelineService.getTimeline(this.asCompanyActor(user), id, query);
+    return this.timelineService.getTimeline(
+      this.asCompanyActor(user),
+      id,
+      query,
+    );
   }
 
   @Patch(':id')

@@ -1,7 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import {
   CompanyCurrency,
   MembershipRole,
@@ -9,6 +6,7 @@ import {
   WhatsAppConnectionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithRlsBypassAsync } from '../../prisma/rls-context';
 import { AuditService } from '../audit/audit.service';
 import {
   MEMBERSHIP_STATUS_ACTIVE,
@@ -130,86 +128,89 @@ export class SetupService {
       `company-${user.sub.slice(0, 8)}`;
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const company = await tx.company.create({
-          data: {
-            name: dto.name.trim(),
-            slug,
-            timezone: dto.timezone ?? 'America/Sao_Paulo',
-            locale: dto.locale ?? 'pt-BR',
-            currency: CompanyCurrency.BRL,
-            status: 'ACTIVE',
-            plan: 'starter',
-          },
-        });
-
-        const membership = await tx.membership.create({
-          data: {
-            companyId: company.id,
-            userId: user.sub,
-            role: MembershipRole.OWNER,
-            status: MEMBERSHIP_STATUS_ACTIVE,
-            invitedBy: user.sub,
-            joinedAt: new Date(),
-          },
-        });
-
-        await this.audit.write(tx, {
-          companyId: company.id,
-          actorUserId: user.sub,
-          action: 'COMPANY_CREATE',
-          targetType: 'COMPANY',
-          targetId: company.id,
-          before: null,
-          after: {
-            name: company.name,
-            slug: company.slug,
-            locale: company.locale,
-            currency: company.currency,
-          },
-          ip: meta?.ip,
-          userAgent: meta?.userAgent,
-        });
-
-        await this.audit.write(tx, {
-          companyId: company.id,
-          actorUserId: user.sub,
-          action: 'MEMBERSHIP_CREATE',
-          targetType: 'MEMBERSHIP',
-          targetId: membership.id,
-          before: null,
-          after: {
-            role: membership.role,
-            status: membership.status,
-            setupWizard: true,
-          },
-          ip: meta?.ip,
-          userAgent: meta?.userAgent,
-        });
-
-        return {
-          company: {
-            id: company.id,
-            name: company.name,
-            slug: company.slug,
-            timezone: company.timezone,
-            locale: company.locale,
-            currency: company.currency,
-          },
-          membership: {
-            id: membership.id,
-            role: membership.role,
-            status: membership.status,
-          },
-          next: {
-            selectCompany: {
-              method: 'POST',
-              path: '/api/auth/select-company',
-              body: { companySlug: company.slug },
+      // Bootstrap before JWT.cid exists — use RLS bypass (same pattern as seeds/scanners).
+      return await runWithRlsBypassAsync(() =>
+        this.prisma.$transaction(async (tx) => {
+          const company = await tx.company.create({
+            data: {
+              name: dto.name.trim(),
+              slug,
+              timezone: dto.timezone ?? 'America/Sao_Paulo',
+              locale: dto.locale ?? 'pt-BR',
+              currency: CompanyCurrency.BRL,
+              status: 'ACTIVE',
+              plan: 'starter',
             },
-          },
-        };
-      });
+          });
+
+          const membership = await tx.membership.create({
+            data: {
+              companyId: company.id,
+              userId: user.sub,
+              role: MembershipRole.OWNER,
+              status: MEMBERSHIP_STATUS_ACTIVE,
+              invitedBy: user.sub,
+              joinedAt: new Date(),
+            },
+          });
+
+          await this.audit.write(tx, {
+            companyId: company.id,
+            actorUserId: user.sub,
+            action: 'COMPANY_CREATE',
+            targetType: 'COMPANY',
+            targetId: company.id,
+            before: null,
+            after: {
+              name: company.name,
+              slug: company.slug,
+              locale: company.locale,
+              currency: company.currency,
+            },
+            ip: meta?.ip,
+            userAgent: meta?.userAgent,
+          });
+
+          await this.audit.write(tx, {
+            companyId: company.id,
+            actorUserId: user.sub,
+            action: 'MEMBERSHIP_CREATE',
+            targetType: 'MEMBERSHIP',
+            targetId: membership.id,
+            before: null,
+            after: {
+              role: membership.role,
+              status: membership.status,
+              setupWizard: true,
+            },
+            ip: meta?.ip,
+            userAgent: meta?.userAgent,
+          });
+
+          return {
+            company: {
+              id: company.id,
+              name: company.name,
+              slug: company.slug,
+              timezone: company.timezone,
+              locale: company.locale,
+              currency: company.currency,
+            },
+            membership: {
+              id: membership.id,
+              role: membership.role,
+              status: membership.status,
+            },
+            next: {
+              selectCompany: {
+                method: 'POST',
+                path: '/api/auth/select-company',
+                body: { companySlug: company.slug },
+              },
+            },
+          };
+        }),
+      );
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

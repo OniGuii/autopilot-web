@@ -1,5 +1,8 @@
 import { AuthRevocationService } from './auth-revocation.service';
-import { authAccessCacheKey, authAccessCacheUserPattern } from './auth.constants';
+import {
+  authAccessCacheKey,
+  authAccessCacheUserPattern,
+} from './auth.constants';
 
 describe('AuthRevocationService', () => {
   const userId = 'user-1';
@@ -33,9 +36,9 @@ describe('AuthRevocationService', () => {
           membershipId,
           companyId,
         }),
-        findMany: jest.fn().mockResolvedValue([
-          { id: sessionId, userId, membershipId },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: sessionId, userId, membershipId }]),
       },
       refreshToken: {
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
@@ -48,9 +51,7 @@ describe('AuthRevocationService', () => {
           status: 'ACTIVE',
         }),
         update: jest.fn().mockResolvedValue({}),
-        findMany: jest.fn().mockResolvedValue([
-          { id: membershipId, userId },
-        ]),
+        findMany: jest.fn().mockResolvedValue([{ id: membershipId, userId }]),
       },
     };
     const service = new AuthRevocationService(

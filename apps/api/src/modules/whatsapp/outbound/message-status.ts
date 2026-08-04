@@ -35,10 +35,7 @@ const ALLOWED: Record<string, ReadonlySet<string>> = {
   [OUTBOUND_MESSAGE_STATUS.FAILED]: new Set([OUTBOUND_MESSAGE_STATUS.SENT]),
 };
 
-export function canTransitionOutboundStatus(
-  from: string,
-  to: string,
-): boolean {
+export function canTransitionOutboundStatus(from: string, to: string): boolean {
   if (from === to) return false;
   return ALLOWED[from]?.has(to) ?? false;
 }

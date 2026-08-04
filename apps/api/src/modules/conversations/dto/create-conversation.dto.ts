@@ -19,7 +19,10 @@ export class CreateConversationDto {
   @IsEnum(Channel)
   channel?: Channel;
 
-  @ApiPropertyOptional({ enum: ConversationStatus, default: ConversationStatus.OPEN })
+  @ApiPropertyOptional({
+    enum: ConversationStatus,
+    default: ConversationStatus.OPEN,
+  })
   @IsOptional()
   @IsEnum(ConversationStatus)
   status?: ConversationStatus;

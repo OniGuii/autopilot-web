@@ -25,7 +25,8 @@ export class ListLeadsQueryDto {
   ownerId?: string;
 
   @ApiPropertyOptional({
-    description: 'When true, only leads with ownerId = null. Conflicts with ownerId.',
+    description:
+      'When true, only leads with ownerId = null. Conflicts with ownerId.',
   })
   @IsOptional()
   @Transform(({ value }) => {
@@ -36,7 +37,9 @@ export class ListLeadsQueryDto {
   @IsBoolean()
   unassigned?: boolean;
 
-  @ApiPropertyOptional({ description: 'Search in name OR phone (contains, insensitive)' })
+  @ApiPropertyOptional({
+    description: 'Search in name OR phone (contains, insensitive)',
+  })
   @IsOptional()
   @IsString()
   @MinLength(1)

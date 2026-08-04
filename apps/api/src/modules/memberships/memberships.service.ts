@@ -243,11 +243,7 @@ export class MembershipsService {
   }
 
   /** D2 — revoke membership in current company only (no global User disable). */
-  async revoke(
-    actor: CompanyActor,
-    membershipId: string,
-    meta?: RequestMeta,
-  ) {
+  async revoke(actor: CompanyActor, membershipId: string, meta?: RequestMeta) {
     const membership = await this.requireMembership(actor.cid, membershipId);
     if (membership.status === MEMBERSHIP_STATUS_REVOKED) {
       return {

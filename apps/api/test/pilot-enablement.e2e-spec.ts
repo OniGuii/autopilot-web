@@ -4,10 +4,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaService } from '../src/prisma/prisma.service';
-import {
-  upsertMembership,
-  upsertUser,
-} from '../prisma/seeds/shared/factories';
+import { upsertMembership, upsertUser } from '../prisma/seeds/shared/factories';
 import {
   createE2eApp,
   E2E_COMPANY_SLUG,
@@ -62,11 +59,11 @@ describe('Pilot Enablement (e2e)', () => {
     companyId = company!.id;
 
     const agentEmail = 'pilot-agent@test.autopilot.dev';
-    const agent = await upsertUser(prisma as never, {
+    const agent = await upsertUser(prisma, {
       email: agentEmail,
       name: 'Pilot Agent',
     });
-    await upsertMembership(prisma as never, {
+    await upsertMembership(prisma, {
       companyId,
       userId: agent.id,
       role: MembershipRole.AGENT,
@@ -156,9 +153,10 @@ describe('Pilot Enablement (e2e)', () => {
       .get('/api/setup/status')
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
-    expect(setupStatus.body.steps.find((s: { key: string }) => s.key === 'company').done).toBe(
-      true,
-    );
+    expect(
+      setupStatus.body.steps.find((s: { key: string }) => s.key === 'company')
+        .done,
+    ).toBe(true);
 
     const secondCompany = await request(app.getHttpServer())
       .post('/api/setup/company')

@@ -271,7 +271,10 @@ export class ConversationsService {
     meta?: RequestMeta,
   ) {
     const companyId = actor.cid;
-    const conversation = await this.findActiveInCompany(companyId, conversationId);
+    const conversation = await this.findActiveInCompany(
+      companyId,
+      conversationId,
+    );
 
     let senderUserId: string | null = null;
     let senderType: string;

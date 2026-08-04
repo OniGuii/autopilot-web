@@ -1,7 +1,4 @@
-import {
-  isDeliveryEvent,
-  parseDeliveryUpdate,
-} from './parse-delivery-update';
+import { isDeliveryEvent, parseDeliveryUpdate } from './parse-delivery-update';
 import { OUTBOUND_MESSAGE_STATUS } from './message-status';
 
 describe('parseDeliveryUpdate', () => {

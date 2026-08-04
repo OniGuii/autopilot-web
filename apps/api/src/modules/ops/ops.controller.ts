@@ -61,7 +61,8 @@ export class OpsController {
   @Get('health')
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
   @ApiOperation({
-    summary: 'Product health (Postgres, Redis, WhatsApp) — does not change /health',
+    summary:
+      'Product health (Postgres, Redis, WhatsApp) — does not change /health',
   })
   getHealth(@CurrentUser() user: AuthenticatedUser) {
     return this.opsService.getHealth(this.asCompanyActor(user));

@@ -83,10 +83,7 @@ describe('WhatsappInboundService', () => {
       }),
     };
 
-    const service = new WhatsappInboundService(
-      prisma as never,
-      audit as never,
-    );
+    const service = new WhatsappInboundService(prisma as never, audit as never);
 
     return { service, prisma, tx, audit, audits, created };
   }
@@ -100,7 +97,11 @@ describe('WhatsappInboundService', () => {
       },
     });
 
-    const result = await service.processInboundMessage(companyId, dto, instance);
+    const result = await service.processInboundMessage(
+      companyId,
+      dto,
+      instance,
+    );
 
     expect(result.duplicate).toBe(true);
     expect(result.messageId).toBe('msg-existing');
@@ -111,7 +112,11 @@ describe('WhatsappInboundService', () => {
   it('auto-creates Lead CONTACTED + Conversation + Message INBOUND + audits', async () => {
     const { service, tx, audits, created } = buildService({});
 
-    const result = await service.processInboundMessage(companyId, dto, instance);
+    const result = await service.processInboundMessage(
+      companyId,
+      dto,
+      instance,
+    );
 
     expect(result.leadCreated).toBe(true);
     expect(result.conversationCreated).toBe(true);
@@ -178,7 +183,11 @@ describe('WhatsappInboundService', () => {
       },
     });
 
-    const result = await service.processInboundMessage(companyId, dto, instance);
+    const result = await service.processInboundMessage(
+      companyId,
+      dto,
+      instance,
+    );
 
     expect(result.leadCreated).toBe(false);
     expect(result.conversationCreated).toBe(false);

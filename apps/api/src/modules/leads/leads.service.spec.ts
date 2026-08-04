@@ -58,9 +58,11 @@ describe('LeadsService CRM operations', () => {
           };
           return { ...stored };
         }),
-        findFirst: jest.fn().mockImplementation(async () =>
-          stored.deletedAt ? null : { ...stored },
-        ),
+        findFirst: jest
+          .fn()
+          .mockImplementation(async () =>
+            stored.deletedAt ? null : { ...stored },
+          ),
         findMany: jest.fn().mockImplementation(async ({ where }) => {
           if (where?.id?.in) {
             return where.id.in.includes(stored.id) ? [{ ...stored }] : [];
@@ -72,7 +74,8 @@ describe('LeadsService CRM operations', () => {
           if (data.owner?.disconnect) next.ownerId = null;
           if (data.owner?.connect?.id) next.ownerId = data.owner.connect.id;
           if (data.status !== undefined) next.status = data.status;
-          if (data.convertedAt !== undefined) next.convertedAt = data.convertedAt;
+          if (data.convertedAt !== undefined)
+            next.convertedAt = data.convertedAt;
           if (data.deletedAt !== undefined) next.deletedAt = data.deletedAt;
           if (data.name !== undefined) next.name = data.name;
           stored = { ...next, updatedAt: new Date() };

@@ -41,3 +41,4 @@ lerna-debug.log*
 .claude
 .windsurf
 skills-lock.json
+dump.rdb

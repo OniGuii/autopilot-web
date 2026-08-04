@@ -1081,8 +1081,7 @@ export class OpsService {
    */
   async getDiagnostics(actor: CompanyActor) {
     const companyId = actor.cid;
-    const fullAccess =
-      actor.role === 'OWNER' || actor.role === 'ADMIN';
+    const fullAccess = actor.role === 'OWNER' || actor.role === 'ADMIN';
 
     const started = Date.now();
     const [postgres, redis, whatsapp] = await Promise.all([
@@ -1112,12 +1111,11 @@ export class OpsService {
 
     if (fullAccess) {
       const queues = await this.asyncMetrics.snapshot();
-      const workersStatus =
-        !queues.available
-          ? 'error'
-          : (queues.dlq?.depth ?? 0) > 0
-            ? 'degraded'
-            : 'ok';
+      const workersStatus = !queues.available
+        ? 'error'
+        : (queues.dlq?.depth ?? 0) > 0
+          ? 'degraded'
+          : 'ok';
       checks.workers = {
         status: workersStatus,
         detail: queues.available

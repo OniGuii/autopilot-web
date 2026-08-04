@@ -3,10 +3,7 @@ import { MembershipRole } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaService } from '../src/prisma/prisma.service';
-import {
-  upsertMembership,
-  upsertUser,
-} from '../prisma/seeds/shared/factories';
+import { upsertMembership, upsertUser } from '../prisma/seeds/shared/factories';
 import {
   createE2eApp,
   E2E_COMPANY_SLUG,
@@ -58,11 +55,11 @@ describe('CRM Operations (e2e)', () => {
 
     if (company) {
       const agentEmail = 'agent@test.autopilot.dev';
-      const agent = await upsertUser(prisma as never, {
+      const agent = await upsertUser(prisma, {
         email: agentEmail,
         name: 'Agent Test',
       });
-      await upsertMembership(prisma as never, {
+      await upsertMembership(prisma, {
         companyId: company.id,
         userId: agent.id,
         role: MembershipRole.AGENT,

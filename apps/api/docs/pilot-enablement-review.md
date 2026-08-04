@@ -79,7 +79,8 @@ Tabelas novas: **nenhuma**.
 3. **OpenAI probe** depende de rede/egress; sem key → `skipped` (não falha o status global sozinho).  
 4. **Export count** faz `COUNT(*)` antes do fetch — tables grandes podem ser lentas (cap evita payload, não o count).  
 5. **Setup max 1 company** bloqueia multi-tenant real no piloto — intencional (D4).  
-6. **Último OWNER** protegido em revoke/demote; self-revoke do único OWNER → 403.
+6. **Último OWNER** protegido em revoke/demote; self-revoke do único OWNER → 403.  
+7. **`POST /setup/company`** usa `runWithRlsBypassAsync` (bootstrap sem JWT.cid) — único ponto de bypass nesta fase; não altera policies RLS.
 
 ---
 

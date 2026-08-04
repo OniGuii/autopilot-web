@@ -1,4 +1,7 @@
-import { EVOLUTION_ERROR_CLASS, type EvolutionErrorClass } from './evolution.constants';
+import {
+  EVOLUTION_ERROR_CLASS,
+  type EvolutionErrorClass,
+} from './evolution.constants';
 
 export class EvolutionChannelError extends Error {
   readonly errorClass: EvolutionErrorClass;
@@ -38,7 +41,10 @@ export class EvolutionChannelError extends Error {
     });
   }
 
-  static connectCooldown(operation: string, retryAfterMs: number): EvolutionChannelError {
+  static connectCooldown(
+    operation: string,
+    retryAfterMs: number,
+  ): EvolutionChannelError {
     return new EvolutionChannelError({
       message: `Evolution connect cooldown active (${retryAfterMs}ms)`,
       errorClass: EVOLUTION_ERROR_CLASS.CONNECT_COOLDOWN,

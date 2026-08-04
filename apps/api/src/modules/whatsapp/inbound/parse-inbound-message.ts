@@ -13,8 +13,7 @@ export type ParsedInboundMessage = {
 };
 
 export type ParseInboundResult =
-  | { ok: true; message: ParsedInboundMessage }
-  | { ok: false; reason: string };
+  { ok: true; message: ParsedInboundMessage } | { ok: false; reason: string };
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -191,9 +190,7 @@ export function isMessageEvent(eventName: string | null): boolean {
  * Provider event id for WebhookEvent idempotency — only when Evolution sends one.
  * Message-level dedupe uses Message.externalMessageId (never invent event ids).
  */
-export function extractExternalEventId(
-  payload: UnknownRecord,
-): string | null {
+export function extractExternalEventId(payload: UnknownRecord): string | null {
   const candidates = [
     payload.id,
     payload.eventId,
