@@ -499,8 +499,10 @@ export class EvolutionClient {
           if (ra) {
             const seconds = Number(ra);
             if (Number.isFinite(seconds)) {
-              (err as EvolutionChannelError & { retryAfterMs?: number }).retryAfterMs =
-                Math.min(seconds * 1000, this.rateLimitWaitMaxMs);
+              err.retryAfterMs = Math.min(
+                seconds * 1000,
+                this.rateLimitWaitMaxMs,
+              );
             }
           }
         }
@@ -568,14 +570,11 @@ export class EvolutionClient {
     attempt: number,
     lastError?: EvolutionChannelError,
   ): number {
-    const withRetryAfter = lastError as
-      | (EvolutionChannelError & { retryAfterMs?: number })
-      | undefined;
     if (
       lastError?.errorClass === EVOLUTION_ERROR_CLASS.RATE_LIMIT &&
-      withRetryAfter?.retryAfterMs
+      lastError.retryAfterMs
     ) {
-      return withRetryAfter.retryAfterMs;
+      return lastError.retryAfterMs;
     }
     const exp = Math.min(
       this.retryMaxDelayMs,

@@ -5,6 +5,8 @@ export class EvolutionChannelError extends Error {
   readonly statusCode?: number;
   readonly operation: string;
   readonly retryable: boolean;
+  /** Populated for HTTP 429 when Retry-After is present. */
+  retryAfterMs?: number;
 
   constructor(input: {
     message: string;
@@ -12,6 +14,7 @@ export class EvolutionChannelError extends Error {
     operation: string;
     statusCode?: number;
     retryable?: boolean;
+    retryAfterMs?: number;
     cause?: unknown;
   }) {
     super(input.message);
@@ -20,6 +23,7 @@ export class EvolutionChannelError extends Error {
     this.operation = input.operation;
     this.statusCode = input.statusCode;
     this.retryable = input.retryable ?? isRetryableClass(input.errorClass);
+    this.retryAfterMs = input.retryAfterMs;
     if (input.cause !== undefined) {
       (this as Error & { cause?: unknown }).cause = input.cause;
     }
