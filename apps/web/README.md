@@ -1,0 +1,40 @@
+# @autopilot/web
+
+Frontend SaaS Autopilot (Next.js 15 + TypeScript) — Sprint 1.
+
+## Stack
+
+- Next.js 15 (App Router)
+- TypeScript
+- Tailwind CSS + componentes estilo Shadcn UI
+- TanStack Query
+- React Hook Form + Zod
+
+## Sprint 1
+
+- Login
+- Select Company (`companySlug`)
+- Dashboard (`GET /api/dashboard`)
+- Leads (list / create / detail)
+
+## Setup
+
+```bash
+cd apps/web
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+A API deve estar em `http://localhost:3001`. O browser chama `/backend/*`, reescrito para a API (evita CORS sem alterar `apps/api`).
+
+## Scripts
+
+| Script | Descrição |
+|--------|-----------|
+| `npm run dev` | Dev server (porta 3000) |
+| `npm run build` | Build de produção |
+| `npm run start` | Serve o build |
+| `npm run lint` | ESLint |
+
+Credenciais locais (seed API): `owner@local.autopilot.dev` / `Demo@12345`.
