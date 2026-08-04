@@ -4,6 +4,10 @@ import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 export async function createE2eApp(): Promise<INestApplication<App>> {
+  // Prefer Jest test env over .env NODE_ENV=development so OpenAI stub works
+  // and fail-closed prod guards stay off during e2e.
+  process.env.NODE_ENV = 'test';
+
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();

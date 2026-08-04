@@ -3,6 +3,7 @@ import { prisma } from './seeds/shared/client';
 import type { SeedProfile } from './seeds/shared/constants';
 import { seedLocal } from './seeds/local';
 import { seedDemo } from './seeds/demo';
+import { seedPilot } from './seeds/pilot';
 import { seedTest } from './seeds/test';
 
 function resolveProfile(): SeedProfile {
@@ -14,9 +15,9 @@ function resolveProfile(): SeedProfile {
 
   const profile = (fromArg || fromEnv || 'local') as SeedProfile;
 
-  if (!['local', 'demo', 'test'].includes(profile)) {
+  if (!['local', 'demo', 'test', 'pilot'].includes(profile)) {
     throw new Error(
-      `Invalid SEED_PROFILE "${profile}". Use: local | demo | test`,
+      `Invalid SEED_PROFILE "${profile}". Use: local | demo | test | pilot`,
     );
   }
 
@@ -53,7 +54,13 @@ async function main() {
     case 'test':
       counts = await seedTest();
       break;
+    case 'pilot':
+      counts = await seedPilot();
+      break;
   }
+
+  // Pool may hand a connection without GUC — refresh before printing counts.
+  await enableRlsBypass();
 
   // eslint-disable-next-line no-console
   console.log('[autopilot-seed] Completed successfully');

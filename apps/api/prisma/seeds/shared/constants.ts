@@ -83,6 +83,35 @@ export const TEST = {
   leadPhone: '+15559990001',
 } as const;
 
+/** Pilot stabilization profile — single demo company for real-user dry runs. */
+export const PILOT = {
+  companySlug: 'autopilot-demo',
+  companyName: 'Autopilot Demo',
+  users: [
+    {
+      email: 'owner@pilot.autopilot.dev',
+      name: 'Owner Pilot',
+      role: 'OWNER' as const,
+    },
+    {
+      email: 'admin@pilot.autopilot.dev',
+      name: 'Admin Pilot',
+      role: 'ADMIN' as const,
+    },
+    {
+      email: 'agent@pilot.autopilot.dev',
+      name: 'Agent Pilot',
+      role: 'AGENT' as const,
+    },
+  ],
+  leadCount: 72,
+  phonePrefix: '+1555400',
+  /** Deterministic WhatsApp instance for local pilot smoke (non-prod). */
+  whatsappInstanceKey: 'a1000000-b100-c100-d100-e10000000001',
+  whatsappWebhookSecret: 'pilot-webhook-secret-demo-only',
+  whatsappPhone: '5511999900001',
+} as const;
+
 export const LEAD_STATUSES = [
   'NEW',
   'CONTACTED',
@@ -92,4 +121,4 @@ export const LEAD_STATUSES = [
   'LOST',
 ] as const;
 
-export type SeedProfile = 'local' | 'demo' | 'test';
+export type SeedProfile = 'local' | 'demo' | 'test' | 'pilot';
