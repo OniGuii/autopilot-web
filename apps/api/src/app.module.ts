@@ -13,11 +13,14 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EventsModule } from './modules/events/events.module';
+import { ExportsModule } from './modules/exports/exports.module';
 import { FollowUpModule } from './modules/follow-up/follow-up.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { MembershipsModule } from './modules/memberships/memberships.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
+import { SetupModule } from './modules/setup/setup.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { ObservabilityModule } from './observability/observability.module';
@@ -51,6 +54,9 @@ const workersInApi = (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true';
     AuthModule,
     CompaniesModule,
     UsersModule,
+    MembershipsModule,
+    SetupModule,
+    ExportsModule,
     LeadsModule,
     ConversationsModule,
     WhatsappModule,

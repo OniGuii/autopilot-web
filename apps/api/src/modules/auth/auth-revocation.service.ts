@@ -22,6 +22,86 @@ export class AuthRevocationService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Pilot D2 — revoke sessions/refresh tokens bound to one company only.
+   * Does not affect the user's sessions in other tenants.
+   */
+  async logoutCompanyDevices(
+    userId: string,
+    companyId: string,
+    meta?: {
+      actorUserId?: string;
+      ip?: string;
+      userAgent?: string;
+    },
+  ): Promise<{ revokedSessions: number }> {
+    const now = new Date();
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        userId,
+        companyId,
+        revokedAt: null,
+        deletedAt: null,
+      },
+      select: { id: true, membershipId: true },
+    });
+
+    const result = await this.prisma.session.updateMany({
+      where: {
+        userId,
+        companyId,
+        revokedAt: null,
+        deletedAt: null,
+      },
+      data: { revokedAt: now },
+    });
+
+    if (sessions.length > 0) {
+      await this.prisma.refreshToken.updateMany({
+        where: {
+          sessionId: { in: sessions.map((s) => s.id) },
+          revokedAt: null,
+          deletedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+    }
+
+    const membershipIds = [
+      ...new Set(
+        sessions
+          .map((s) => s.membershipId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    for (const membershipId of membershipIds) {
+      await this.invalidateAccessCacheForMembership(userId, membershipId);
+    }
+    await this.invalidateAccessCacheForUser(userId);
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: meta?.actorUserId ?? userId,
+          action: 'USER_LOGOUT_ALL_COMPANY',
+          targetType: 'USER',
+          targetId: userId,
+          before: null,
+          after: { revokedSessions: result.count, scope: 'company' },
+          ip: meta?.ip,
+          userAgent: meta?.userAgent,
+        });
+      });
+    } catch (err) {
+      this.logger.warn(
+        `USER_LOGOUT_ALL_COMPANY audit failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    return { revokedSessions: result.count };
+  }
+
   async logoutAllDevices(userId: string, meta?: {
     actorUserId?: string;
     companyId?: string | null;

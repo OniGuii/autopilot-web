@@ -185,6 +185,39 @@ describe('OpsService', () => {
         audits.push(input);
         return { id: 'audit-1' };
       }),
+      listForCompany: jest.fn(
+        async (cid: string, query: { page?: number; limit?: number }) => {
+          const page = query.page ?? 1;
+          const limit = query.limit ?? 20;
+          const rows = await prisma.auditLog.findMany({
+            where: { companyId: cid },
+            orderBy: { occurredAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit,
+          });
+          const total = await prisma.auditLog.count({
+            where: { companyId: cid },
+          });
+          return {
+            data: rows,
+            meta: {
+              page,
+              limit,
+              total,
+              totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+            },
+          };
+        },
+      ),
+      getForCompany: jest.fn(async (cid: string, id: string) => {
+        const row = await prisma.auditLog.findFirst({
+          where: { id, companyId: cid },
+        });
+        if (!row) {
+          throw new NotFoundException('Audit log not found');
+        }
+        return row;
+      }),
     };
 
     const config = {

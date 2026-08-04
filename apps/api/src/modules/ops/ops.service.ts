@@ -834,67 +834,12 @@ export class OpsService {
     };
   }
 
-  async listAudit(actor: CompanyActor, query: ListAuditQueryDto) {
-    const companyId = actor.cid;
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-
-    const where: Prisma.AuditLogWhereInput = {
-      companyId,
-      deletedAt: null,
-    };
-
-    if (query.action) where.action = query.action;
-    if (query.actorUserId) where.actorUserId = query.actorUserId;
-    if (query.targetType) where.targetType = query.targetType;
-    if (query.targetId) where.targetId = query.targetId;
-
-    if (query.from || query.to) {
-      where.occurredAt = {};
-      if (query.from) where.occurredAt.gte = query.from;
-      if (query.to) where.occurredAt.lte = query.to;
-    }
-
-    const [total, rows] = await this.prisma.$transaction([
-      this.prisma.auditLog.count({ where }),
-      this.prisma.auditLog.findMany({
-        where,
-        orderBy: { occurredAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        select: {
-          id: true,
-          companyId: true,
-          actorType: true,
-          actorUserId: true,
-          action: true,
-          targetType: true,
-          targetId: true,
-          occurredAt: true,
-          createdAt: true,
-        },
-      }),
-    ]);
-
-    return {
-      data: rows,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-      },
-    };
+  listAudit(actor: CompanyActor, query: ListAuditQueryDto) {
+    return this.audit.listForCompany(actor.cid, query);
   }
 
-  async getAudit(actor: CompanyActor, id: string) {
-    const row = await this.prisma.auditLog.findFirst({
-      where: { id, companyId: actor.cid, deletedAt: null },
-    });
-    if (!row) {
-      throw new NotFoundException('Audit log not found');
-    }
-    return row;
+  getAudit(actor: CompanyActor, id: string) {
+    return this.audit.getForCompany(actor.cid, id);
   }
 
   async listWebhooks(actor: CompanyActor, query: ListWebhooksQueryDto) {
@@ -1127,6 +1072,121 @@ export class OpsService {
       corrigidos,
       ignorados: encontrados - corrigidos,
     };
+  }
+
+  /**
+   * Pilot diagnostics (D3):
+   * OWNER|ADMIN → full (postgres, redis, whatsapp, workers, openai)
+   * AGENT → limited (postgres, redis, whatsapp only)
+   */
+  async getDiagnostics(actor: CompanyActor) {
+    const companyId = actor.cid;
+    const fullAccess = actor.role === 'OWNER' || actor.role === 'ADMIN';
+
+    const started = Date.now();
+    const [postgres, redis, whatsapp] = await Promise.all([
+      this.timedCheck(() => this.checkPostgres()),
+      this.timedCheck(() => this.checkRedis()),
+      this.timedCheck(() => this.checkWhatsapp(companyId)),
+    ]);
+
+    const checks: Record<
+      string,
+      { status: string; latencyMs?: number; detail?: string }
+    > = {
+      postgres: {
+        status: postgres.result === 'up' ? 'ok' : 'error',
+        latencyMs: postgres.latencyMs,
+      },
+      redis: {
+        status: redis.result === 'up' ? 'ok' : 'error',
+        latencyMs: redis.latencyMs,
+      },
+      whatsapp: {
+        status: whatsapp.result === 'up' ? 'ok' : 'degraded',
+        latencyMs: whatsapp.latencyMs,
+        detail: whatsapp.result === 'up' ? 'CONNECTED' : 'NOT_CONNECTED',
+      },
+    };
+
+    if (fullAccess) {
+      const queues = await this.asyncMetrics.snapshot();
+      const workersStatus = !queues.available
+        ? 'error'
+        : (queues.dlq?.depth ?? 0) > 0
+          ? 'degraded'
+          : 'ok';
+      checks.workers = {
+        status: workersStatus,
+        detail: queues.available
+          ? JSON.stringify({
+              dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
+              inboundWaiting: queues.whatsappInbound?.waiting ?? null,
+            })
+          : (queues.error ?? 'queues_unavailable'),
+      };
+
+      checks.openai = await this.checkOpenAi();
+    }
+
+    let status: 'ok' | 'degraded' | 'error' = 'ok';
+    const values = Object.values(checks).map((c) => c.status);
+    if (values.includes('error')) status = 'error';
+    else if (values.includes('degraded') || values.includes('skipped')) {
+      status = values.includes('degraded') ? 'degraded' : 'ok';
+    }
+
+    return {
+      status,
+      scope: fullAccess ? 'full' : 'limited',
+      checks,
+      generatedInMs: Date.now() - started,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private async timedCheck<T>(
+    fn: () => Promise<T>,
+  ): Promise<{ result: T; latencyMs: number }> {
+    const t0 = Date.now();
+    const result = await fn();
+    return { result, latencyMs: Date.now() - t0 };
+  }
+
+  private async checkOpenAi(): Promise<{
+    status: 'ok' | 'degraded' | 'error' | 'skipped';
+    latencyMs?: number;
+    detail?: string;
+  }> {
+    const apiKey = this.config.get<string>('openai.apiKey')?.trim();
+    if (!apiKey) {
+      return { status: 'skipped', detail: 'OPENAI_API_KEY_MISSING' };
+    }
+
+    const t0 = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    try {
+      const res = await fetch('https://api.openai.com/v1/models', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+      });
+      const latencyMs = Date.now() - t0;
+      if (res.ok) return { status: 'ok', latencyMs };
+      if (res.status >= 500) {
+        return { status: 'degraded', latencyMs, detail: `HTTP_${res.status}` };
+      }
+      return { status: 'error', latencyMs, detail: `HTTP_${res.status}` };
+    } catch (err) {
+      return {
+        status: 'degraded',
+        latencyMs: Date.now() - t0,
+        detail: err instanceof Error ? err.name : 'OPENAI_PROBE_FAILED',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async checkPostgres(): Promise<'up' | 'down'> {

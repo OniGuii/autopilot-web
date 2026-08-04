@@ -106,20 +106,30 @@ enum LeadActivityStatus {
   CANCELLED
 }
 
+enum CompanyCurrency {
+  BRL
+  USD
+  EUR
+}
+
 // =============================================================================
 // Models
 // =============================================================================
 
 model Company {
-  id        String        @id @default(uuid()) @db.Uuid
-  name      String        @db.VarChar(200)
-  slug      String?       @db.VarChar(100)
-  status    CompanyStatus @default(ACTIVE)
-  timezone  String        @default("America/Sao_Paulo") @db.VarChar(64)
-  plan      String?       @default("starter") @db.VarChar(32)
-  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  id            String          @id @default(uuid()) @db.Uuid
+  name          String          @db.VarChar(200)
+  slug          String?         @db.VarChar(100)
+  status        CompanyStatus   @default(ACTIVE)
+  timezone      String          @default("America/Sao_Paulo") @db.VarChar(64)
+  plan          String?         @default("starter") @db.VarChar(32)
+  locale        String          @default("pt-BR") @db.VarChar(16)
+  businessHours Json?           @map("business_hours")
+  logoUrl       String?         @map("logo_url") @db.VarChar(500)
+  currency      CompanyCurrency @default(BRL)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?       @map("deleted_at") @db.Timestamptz(6)
 
   memberships           Membership[]
   leads                 Lead[]
