@@ -50,6 +50,12 @@ export type OpsMetrics = {
       failed: number;
       delayed: number;
     } | null;
+    followupScheduler: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+    } | null;
     /** Depth; null when unavailable (never masked as 0). */
     dlqWhatsappInbound: number | null;
     dlqDepth: number | null;
@@ -80,6 +86,7 @@ export class OpsService {
   private readonly reconcileTake: number;
   private readonly receivedStaleMs: number;
   private readonly dlqStaleMs: number;
+  private readonly followupBacklogHigh: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -97,6 +104,10 @@ export class OpsService {
       5 * 60 * 1000,
     );
     this.dlqStaleMs = config.get<number>('async.dlqStaleMs', 60 * 60 * 1000);
+    this.followupBacklogHigh = config.get<number>(
+      'async.followupBacklogHigh',
+      100,
+    );
   }
 
   async getOverview(actor: CompanyActor) {
@@ -208,6 +219,14 @@ export class OpsService {
         available: queues.available,
         ...(queues.error ? { error: queues.error } : {}),
         whatsappInbound: queues.whatsappInbound,
+        followupScheduler: queues.followupScheduler
+          ? {
+              waiting: queues.followupScheduler.waiting,
+              active: queues.followupScheduler.active,
+              completed: queues.followupScheduler.completed,
+              failed: queues.followupScheduler.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
@@ -389,6 +408,28 @@ export class OpsService {
       });
     }
 
+    const followupWaiting = metrics.queues.followupScheduler?.waiting;
+    if (
+      typeof followupWaiting === 'number' &&
+      followupWaiting >= this.followupBacklogHigh
+    ) {
+      alerts.push({
+        code: 'FOLLOWUP_BACKLOG_HIGH',
+        severity: 'warning',
+        message: 'followup-scheduler waiting backlog is high',
+        count: followupWaiting,
+      });
+    }
+
+    if (executingStale > 0) {
+      alerts.push({
+        code: 'FOLLOWUP_STUCK_EXECUTING',
+        severity: 'warning',
+        message: 'Follow-ups stuck in EXECUTING beyond stale threshold',
+        count: executingStale,
+      });
+    }
+
     return {
       companyId,
       generatedAt: new Date().toISOString(),
@@ -431,6 +472,14 @@ export class OpsService {
         available: queues.available,
         ...(queues.error ? { error: queues.error } : {}),
         whatsappInbound: queues.whatsappInbound,
+        followupScheduler: queues.followupScheduler
+          ? {
+              waiting: queues.followupScheduler.waiting,
+              active: queues.followupScheduler.active,
+              completed: queues.followupScheduler.completed,
+              failed: queues.followupScheduler.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,

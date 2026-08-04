@@ -1,14 +1,19 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { PrismaModule } from '../../prisma/prisma.module';
+import { SharedModule } from '../../shared/shared.module';
 import { AsyncLifecycleService } from './async-lifecycle.service';
 import {
   ASYNC_QUEUE_PREFIX,
   QUEUE_DLQ_WHATSAPP_INBOUND,
+  QUEUE_FOLLOWUP_SCHEDULER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 import { AsyncMetricsService } from './async-metrics.service';
 import { DlqService } from './dlq.service';
+import { FollowUpDueScanner } from './followup-due.scanner';
+import { FollowUpSchedulerProducer } from './producers/followup-scheduler.producer';
 import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
 
 /**
@@ -18,6 +23,9 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
 @Global()
 @Module({
   imports: [
+    ConfigModule,
+    PrismaModule,
+    SharedModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -38,10 +46,13 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
     BullModule.registerQueue(
       { name: QUEUE_WHATSAPP_INBOUND },
       { name: QUEUE_DLQ_WHATSAPP_INBOUND },
+      { name: QUEUE_FOLLOWUP_SCHEDULER },
     ),
   ],
   providers: [
     WhatsappInboundProducer,
+    FollowUpSchedulerProducer,
+    FollowUpDueScanner,
     DlqService,
     AsyncMetricsService,
     AsyncLifecycleService,
@@ -49,6 +60,7 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
   exports: [
     BullModule,
     WhatsappInboundProducer,
+    FollowUpSchedulerProducer,
     DlqService,
     AsyncMetricsService,
   ],

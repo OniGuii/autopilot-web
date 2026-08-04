@@ -1,4 +1,4 @@
-/** Fase 7.1 / 7.1-H — Async Foundation queue names and defaults. */
+/** Fase 7.1 / 7.1-H / 7.2A — Async queue names and defaults. */
 
 export const ASYNC_QUEUE_PREFIX = 'autopilot:bq';
 
@@ -6,10 +6,21 @@ export const QUEUE_WHATSAPP_INBOUND = 'whatsapp-inbound';
 /** BullMQ forbids `:` in queue names — use hyphen. */
 export const QUEUE_DLQ_WHATSAPP_INBOUND = 'dlq-whatsapp-inbound';
 
+/** 7.2A — due FollowUp scheduler */
+export const QUEUE_FOLLOWUP_SCHEDULER = 'followup-scheduler';
+
 export const WHATSAPP_INBOUND_JOB_NAME = 'process-webhook';
+export const FOLLOWUP_SCHEDULER_JOB_NAME = 'execute-due-followup';
 
 export const WHATSAPP_INBOUND_ATTEMPTS_DEFAULT = 5;
 export const WHATSAPP_INBOUND_BACKOFF_MS_DEFAULT = 2_000;
+
+export const FOLLOWUP_SCHEDULER_ATTEMPTS_DEFAULT = 3;
+export const FOLLOWUP_SCHEDULER_BACKOFF_MS_DEFAULT = 5_000;
+export const FOLLOWUP_SCHEDULER_CONCURRENCY_DEFAULT = 5;
+export const FOLLOWUP_SCHEDULER_SCAN_INTERVAL_MS_DEFAULT = 30_000;
+export const FOLLOWUP_SCHEDULER_SCAN_BATCH_DEFAULT = 50;
+export const FOLLOWUP_SCHEDULER_BACKLOG_HIGH_DEFAULT = 100;
 
 /** QUEUE_CONCURRENCY (preferred) / ASYNC_INBOUND_CONCURRENCY fallback. */
 export const QUEUE_CONCURRENCY_DEFAULT = 10;
@@ -29,6 +40,8 @@ export const WEBHOOK_CLAIM_STALE_MS_DEFAULT = 45_000;
 /** Alert when WebhookEvent stays RECEIVED longer than this. */
 export const WEBHOOK_RECEIVED_STALE_MS_DEFAULT = 5 * 60 * 1000;
 
+export const FOLLOWUP_SCAN_LOCK_KEY = 'autopilot:followup:scan';
+
 /** Resolve concurrency at module load (decorator options are static). */
 export function resolveQueueConcurrency(): number {
   const raw =
@@ -37,4 +50,14 @@ export function resolveQueueConcurrency(): number {
     String(QUEUE_CONCURRENCY_DEFAULT);
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n >= 1 ? n : QUEUE_CONCURRENCY_DEFAULT;
+}
+
+export function resolveFollowupSchedulerConcurrency(): number {
+  const raw =
+    process.env.FOLLOWUP_SCHEDULER_CONCURRENCY ??
+    String(FOLLOWUP_SCHEDULER_CONCURRENCY_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1
+    ? n
+    : FOLLOWUP_SCHEDULER_CONCURRENCY_DEFAULT;
 }
