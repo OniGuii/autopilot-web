@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { QueueModule } from '../async/queue.module';
 import { EvolutionChannelMetrics } from './evolution.channel-metrics';
 import { EvolutionClient } from './evolution.client';
 import { WhatsappInboundService } from './inbound/whatsapp-inbound.service';
@@ -10,7 +11,7 @@ import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 
 @Module({
-  imports: [AuthModule, AuditModule],
+  imports: [AuthModule, AuditModule, QueueModule],
   controllers: [WhatsappController],
   providers: [
     WhatsappService,

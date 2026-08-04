@@ -25,6 +25,7 @@ function swaggerBasicAuth(user: string, password: string) {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
   const port = configService.get<number>('port', 3001);

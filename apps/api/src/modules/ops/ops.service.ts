@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AsyncMetricsService } from '../async/async-metrics.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { EvolutionClient } from '../whatsapp/evolution.client';
@@ -37,6 +38,16 @@ export type OpsMetrics = {
   webhookP95Ms: number | null;
   webhookSlowLast15m: number;
   webhookInflight: number;
+  queues: {
+    whatsappInbound: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    };
+    dlqWhatsappInbound: number;
+  };
 };
 
 export type OpsAlert = {
@@ -62,6 +73,7 @@ export class OpsService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     private readonly evolution: EvolutionClient,
+    private readonly asyncMetrics: AsyncMetricsService,
   ) {
     this.reconcileTake = config.get<number>(
       'ops.reconcileTake',
@@ -143,7 +155,10 @@ export class OpsService {
       }),
     ]);
 
-    const channel = this.evolution.getMetricsSnapshot();
+    const [channel, queues] = await Promise.all([
+      Promise.resolve(this.evolution.getMetricsSnapshot()),
+      this.asyncMetrics.snapshot(),
+    ]);
 
     return {
       whatsappConnected:
@@ -160,6 +175,10 @@ export class OpsService {
       webhookP95Ms: channel.webhookP95Ms,
       webhookSlowLast15m: channel.webhookSlowLast15m,
       webhookInflight: channel.webhookInflight,
+      queues: {
+        whatsappInbound: queues.whatsappInbound,
+        dlqWhatsappInbound: queues.dlqWhatsappInbound,
+      },
     };
   }
 
@@ -281,6 +300,24 @@ export class OpsService {
       });
     }
 
+    if (metrics.queues.whatsappInbound.waiting >= 100) {
+      alerts.push({
+        code: 'QUEUE_BACKLOG_HIGH',
+        severity: 'warning',
+        message: 'whatsapp-inbound waiting backlog is high',
+        count: metrics.queues.whatsappInbound.waiting,
+      });
+    }
+
+    if (metrics.queues.dlqWhatsappInbound > 0) {
+      alerts.push({
+        code: 'QUEUE_DLQ_DEPTH',
+        severity: 'warning',
+        message: 'whatsapp-inbound DLQ has jobs',
+        count: metrics.queues.dlqWhatsappInbound,
+      });
+    }
+
     return {
       companyId,
       generatedAt: new Date().toISOString(),
@@ -290,7 +327,10 @@ export class OpsService {
 
   async getHealth(actor: CompanyActor) {
     const companyId = actor.cid;
-    const channel = this.evolution.getMetricsSnapshot();
+    const [channel, queues] = await Promise.all([
+      Promise.resolve(this.evolution.getMetricsSnapshot()),
+      this.asyncMetrics.snapshot(),
+    ]);
 
     const [postgres, redis, whatsapp] = await Promise.all([
       this.checkPostgres(),
@@ -314,6 +354,10 @@ export class OpsService {
       postgres,
       redis,
       whatsapp,
+      queues: {
+        whatsappInbound: queues.whatsappInbound,
+        dlqWhatsappInbound: queues.dlqWhatsappInbound,
+      },
       evolution: {
         circuit: channel.evolutionCircuitState,
         lastErrorAt: channel.evolutionLastErrorAt,

@@ -172,11 +172,25 @@ describe('OpsService', () => {
       }),
     };
 
+    const asyncMetrics = {
+      snapshot: jest.fn().mockResolvedValue({
+        whatsappInbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        dlqWhatsappInbound: 0,
+      }),
+    };
+
     const service = new OpsService(
       prisma as never,
       audit as never,
       config as never,
       evolution as never,
+      asyncMetrics as never,
     );
 
     // Patch redis check via prototype spy when needed
@@ -215,6 +229,10 @@ describe('OpsService', () => {
         evolutionCircuitState: 'CLOSED',
         evolutionTimeoutsLast15m: 0,
         webhookInflight: 0,
+        queues: expect.objectContaining({
+          dlqWhatsappInbound: 0,
+          whatsappInbound: expect.objectContaining({ waiting: 0 }),
+        }),
       }),
     );
   });
@@ -241,6 +259,9 @@ describe('OpsService', () => {
     expect(health.whatsapp).toBe('up');
     expect(health.evolution).toEqual(
       expect.objectContaining({ circuit: 'CLOSED', stubMode: true }),
+    );
+    expect(health.queues).toEqual(
+      expect.objectContaining({ dlqWhatsappInbound: 0 }),
     );
     expect(health.timestamp).toBeDefined();
   });
