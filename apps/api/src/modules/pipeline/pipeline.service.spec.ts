@@ -66,6 +66,12 @@ describe('PipelineService', () => {
         toStatus: LeadStatus.NEW,
         createdAt: t0,
       },
+      {
+        leadId: 'l2',
+        fromStatus: LeadStatus.NEW,
+        toStatus: LeadStatus.LOST,
+        createdAt: t1,
+      },
     ]);
 
     const res = await service.getPipeline(actor, {});
@@ -73,6 +79,8 @@ describe('PipelineService', () => {
     expect(res.conversionByStage!.NEW).toBe(0.5);
     expect(res.conversionByStage!.CONTACTED).toBe(1);
     expect(res.avgTimeInStageMs).not.toBeNull();
+    // both leads spent exactly 1 day in NEW before exiting
     expect(res.avgTimeInStageMs!.NEW).toBe(86_400_000);
+    expect(res.avgTimeInStageMs!.CONTACTED).toBe(86_400_000);
   });
 });
