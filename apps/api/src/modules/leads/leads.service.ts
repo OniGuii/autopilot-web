@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { AssignLeadDto } from './dto/assign-lead.dto';
+import { BulkAssignLeadsDto } from './dto/bulk-assign-leads.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { ListLeadsQueryDto } from './dto/list-leads.query.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
@@ -37,6 +38,14 @@ export type LeadResponse = {
   lastContactAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type BulkAssignResult = {
+  ownerId: string | null;
+  requested: number;
+  updated: number;
+  ignored: number;
+  ignoredIds: string[];
 };
 
 @Injectable()
@@ -73,6 +82,15 @@ export class LeadsService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const lead = await tx.lead.create({ data });
+        await tx.leadStatusTransition.create({
+          data: {
+            companyId,
+            leadId: lead.id,
+            fromStatus: null,
+            toStatus: lead.status,
+            changedByUserId: actor.sub,
+          },
+        });
         await this.audit.write(tx, {
           companyId,
           actorUserId: actor.sub,
@@ -155,6 +173,8 @@ export class LeadsService {
           ? { disconnect: true }
           : { connect: { id: dto.ownerId } };
     }
+    const statusChanged =
+      dto.status !== undefined && dto.status !== existing.status;
     if (dto.status !== undefined) {
       data.status = dto.status;
       if (dto.status === LeadStatus.CONVERTED && !existing.convertedAt) {
@@ -179,6 +199,28 @@ export class LeadsService {
           ip: meta?.ip,
           userAgent: meta?.userAgent,
         });
+        if (statusChanged) {
+          await tx.leadStatusTransition.create({
+            data: {
+              companyId,
+              leadId: lead.id,
+              fromStatus: existing.status,
+              toStatus: lead.status,
+              changedByUserId: actor.sub,
+            },
+          });
+          await this.audit.write(tx, {
+            companyId,
+            actorUserId: actor.sub,
+            action: 'LEAD_STATUS_CHANGE',
+            targetType: 'LEAD',
+            targetId: lead.id,
+            before: { status: existing.status },
+            after: { status: lead.status },
+            ip: meta?.ip,
+            userAgent: meta?.userAgent,
+          });
+        }
         return this.toResponse(lead);
       });
     } catch (error) {
@@ -215,6 +257,105 @@ export class LeadsService {
       });
       return this.toResponse(lead);
     });
+  }
+
+  async unassign(actor: CompanyActor, id: string, meta?: RequestMeta) {
+    const companyId = actor.cid;
+    const existing = await this.findActiveInCompany(companyId, id);
+
+    return this.prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.update({
+        where: { id: existing.id },
+        data: { owner: { disconnect: true } },
+      });
+      await this.audit.write(tx, {
+        companyId,
+        actorUserId: actor.sub,
+        action: 'LEAD_UNASSIGN',
+        targetType: 'LEAD',
+        targetId: lead.id,
+        before: this.snapshot(existing),
+        after: this.snapshot(lead),
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+      });
+      return this.toResponse(lead);
+    });
+  }
+
+  async bulkAssign(
+    actor: CompanyActor,
+    dto: BulkAssignLeadsDto,
+    meta?: RequestMeta,
+  ): Promise<BulkAssignResult> {
+    const companyId = actor.cid;
+    const ownerId = dto.ownerId ?? null;
+    const requestedIds = [...new Set(dto.leadIds)];
+
+    if (ownerId) {
+      await this.assertActiveMember(companyId, ownerId);
+    }
+
+    const matching = await this.prisma.lead.findMany({
+      where: {
+        companyId,
+        deletedAt: null,
+        id: { in: requestedIds },
+      },
+    });
+    const matchingIds = new Set(matching.map((l) => l.id));
+    const ignoredIds = requestedIds.filter((id) => !matchingIds.has(id));
+    const updatedIds: string[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const existing of matching) {
+        const lead = await tx.lead.update({
+          where: { id: existing.id },
+          data:
+            ownerId === null
+              ? { owner: { disconnect: true } }
+              : { owner: { connect: { id: ownerId } } },
+        });
+        updatedIds.push(lead.id);
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: actor.sub,
+          action: ownerId === null ? 'LEAD_UNASSIGN' : 'LEAD_ASSIGN',
+          targetType: 'LEAD',
+          targetId: lead.id,
+          before: this.snapshot(existing),
+          after: this.snapshot(lead),
+          ip: meta?.ip,
+          userAgent: meta?.userAgent,
+        });
+      }
+
+      await this.audit.write(tx, {
+        companyId,
+        actorUserId: actor.sub,
+        action: 'LEAD_BULK_ASSIGN',
+        targetType: 'LEAD',
+        targetId: updatedIds[0] ?? requestedIds[0],
+        before: null,
+        after: {
+          ownerId,
+          leadIds: updatedIds,
+          requested: requestedIds.length,
+          ignored: ignoredIds.length,
+          ignoredIds,
+        },
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+      });
+    });
+
+    return {
+      ownerId,
+      requested: requestedIds.length,
+      updated: updatedIds.length,
+      ignored: ignoredIds.length,
+      ignoredIds,
+    };
   }
 
   async remove(actor: CompanyActor, id: string, meta?: RequestMeta) {
