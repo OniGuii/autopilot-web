@@ -14,4 +14,28 @@ export const endpoints = {
     create: "/api/leads",
     byId: (id: string) => `/api/leads/${id}`,
   },
+  conversations: {
+    list: "/api/conversations",
+    create: "/api/conversations",
+    byId: (id: string) => `/api/conversations/${id}`,
+    close: (id: string) => `/api/conversations/${id}/close`,
+    messages: (id: string) => `/api/conversations/${id}/messages`,
+  },
+  whatsapp: {
+    connect: "/api/whatsapp/connect",
+    status: "/api/whatsapp/status",
+    disconnect: "/api/whatsapp/disconnect",
+    send: "/api/whatsapp/send",
+  },
+  followUps: {
+    list: "/api/follow-ups",
+    create: "/api/follow-ups",
+    byId: (id: string) => `/api/follow-ups/${id}`,
+    approve: (id: string) => `/api/follow-ups/${id}/approve`,
+    reject: (id: string) => `/api/follow-ups/${id}/reject`,
+    reschedule: (id: string) => `/api/follow-ups/${id}/reschedule`,
+    execute: (id: string) => `/api/follow-ups/${id}/execute`,
+    cancel: (id: string) => `/api/follow-ups/${id}/cancel`,
+    retry: (id: string) => `/api/follow-ups/${id}/retry`,
+  },
 } as const;

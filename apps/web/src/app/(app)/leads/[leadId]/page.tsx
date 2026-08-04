@@ -149,6 +149,14 @@ export default function LeadDetailPage() {
             <span>Atualizado {formatDateTime(lead.updatedAt)}</span>
           </div>
         </div>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/conversations?leadId=${lead.id}`}>Conversas</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/follow-ups?leadId=${lead.id}`}>Follow-ups</Link>
+          </Button>
+        </div>
       </div>
 
       <Card className="bg-white/90">
