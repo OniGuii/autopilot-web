@@ -37,6 +37,16 @@ export default () => {
       accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
       refreshTtlDays: parseInt(process.env.JWT_REFRESH_TTL_DAYS ?? '7', 10),
     },
+    auth: {
+      maxSessionsPerUser: parseInt(
+        process.env.AUTH_MAX_SESSIONS_PER_USER ?? '5',
+        10,
+      ),
+      membershipCacheTtlSeconds: parseInt(
+        process.env.AUTH_MEMBERSHIP_CACHE_TTL_SECONDS ?? '30',
+        10,
+      ),
+    },
     throttle: {
       ttlMs: parseInt(process.env.THROTTLE_TTL_MS ?? '60000', 10),
       limit: parseInt(process.env.THROTTLE_LIMIT ?? '120', 10),

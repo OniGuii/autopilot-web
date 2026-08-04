@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { AuditModule } from '../audit/audit.module';
+import { AccessPrincipalService } from './access-principal.service';
 import { AuthController } from './auth.controller';
+import { AuthRevocationService } from './auth-revocation.service';
 import { AuthService } from './auth.service';
 import { CompanyContextGuard } from './guards/company-context.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -11,6 +14,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
+    AuditModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -31,6 +35,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AccessPrincipalService,
+    AuthRevocationService,
     JwtStrategy,
     JwtAuthGuard,
     CompanyContextGuard,
@@ -38,6 +44,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   ],
   exports: [
     AuthService,
+    AccessPrincipalService,
+    AuthRevocationService,
     JwtModule,
     PassportModule,
     JwtAuthGuard,

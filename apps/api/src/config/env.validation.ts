@@ -57,4 +57,10 @@ export const envValidationSchema = Joi.object({
   }),
   JWT_ACCESS_TTL: Joi.string().default('15m'),
   JWT_REFRESH_TTL_DAYS: Joi.number().default(7),
+
+  AUTH_MAX_SESSIONS_PER_USER: Joi.number().integer().min(1).default(5),
+  AUTH_MEMBERSHIP_CACHE_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(1)
+    .default(30),
 });

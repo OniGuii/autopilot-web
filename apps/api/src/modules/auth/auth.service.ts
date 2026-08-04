@@ -13,6 +13,12 @@ import {
 import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessPrincipalService } from './access-principal.service';
+import {
+  AUTH_MAX_SESSIONS_DEFAULT,
+  MEMBERSHIP_STATUS_ACTIVE,
+} from './auth.constants';
+import { AuthRevocationService } from './auth-revocation.service';
 import { LoginDto } from './dto/login.dto';
 import type { AuthenticatedUser, JwtPayload } from './types/jwt-payload';
 
@@ -34,15 +40,22 @@ export class AuthService {
   private readonly accessTtl: string;
   private readonly accessTtlSec: number;
   private readonly refreshTtlDays: number;
+  private readonly maxSessionsPerUser: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly accessPrincipal: AccessPrincipalService,
+    private readonly revocation: AuthRevocationService,
     config: ConfigService,
   ) {
     this.accessTtl = config.get<string>('jwt.accessTtl', '15m');
     this.accessTtlSec = ttlToSeconds(this.accessTtl);
     this.refreshTtlDays = config.get<number>('jwt.refreshTtlDays', 7);
+    this.maxSessionsPerUser = config.get<number>(
+      'auth.maxSessionsPerUser',
+      AUTH_MAX_SESSIONS_DEFAULT,
+    );
   }
 
   async login(dto: LoginDto, meta?: RequestMeta) {
@@ -78,6 +91,8 @@ export class AuthService {
           m.company.slug,
       ),
     );
+
+    await this.enforceSessionConcurrencyLimit(user.id);
 
     const session = await this.prisma.session.create({
       data: {
@@ -178,6 +193,9 @@ export class AuthService {
       },
     });
 
+    // AH11: drop any stale access cache before issuing bound tokens.
+    await this.revocation.invalidateAccessCacheForUser(current.sub);
+
     await this.revokeActiveRefreshTokens(session.id);
 
     const payload = this.buildPayload({
@@ -236,12 +254,27 @@ export class AuthService {
       },
     });
 
-    if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
+    if (!existing) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const secretOk = await argon2.verify(existing.tokenHash, parsed.secret);
     if (!secretOk) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // AH7: reuse of rotated/revoked refresh → revoke session.
+    if (
+      existing.revokedAt ||
+      existing.replacedById ||
+      existing.expiresAt <= new Date()
+    ) {
+      if (existing.revokedAt || existing.replacedById) {
+        await this.revocation.revokeSession(
+          existing.sessionId,
+          'REFRESH_REUSE',
+        );
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -257,20 +290,42 @@ export class AuthService {
       throw new UnauthorizedException('Session expired or revoked');
     }
 
+    let membershipId = session.membershipId;
+    let companyId = session.companyId;
+    let role: MembershipRole | null = session.membership?.role ?? null;
+
+    if (membershipId && companyId) {
+      const active = await this.accessPrincipal.assertActiveMembershipForRefresh(
+        {
+          userId: session.userId,
+          membershipId,
+          companyId,
+        },
+      );
+      membershipId = active.membershipId;
+      companyId = active.companyId;
+      role = active.role;
+    } else if (
+      session.membership &&
+      (session.membership.status !== MEMBERSHIP_STATUS_ACTIVE ||
+        session.membership.deletedAt)
+    ) {
+      throw new UnauthorizedException('Session expired or revoked');
+    }
+
     // Mandatory rotation — create next token first (FK replaced_by_id).
     const nextId = randomUUID();
     const secret = randomBytes(32).toString('base64url');
     const tokenHash = await argon2.hash(secret);
 
-    const membership = session.membership;
     await this.prisma.$transaction([
       this.prisma.refreshToken.create({
         data: {
           id: nextId,
           userId: session.userId,
           sessionId: session.id,
-          membershipId: membership?.id ?? session.membershipId,
-          companyId: membership?.companyId ?? session.companyId,
+          membershipId,
+          companyId,
           tokenHash,
           expiresAt: this.refreshExpiresAt(),
         },
@@ -287,9 +342,9 @@ export class AuthService {
     const payload = this.buildPayload({
       userId: session.userId,
       sessionId: session.id,
-      membershipId: membership?.id ?? session.membershipId,
-      companyId: membership?.companyId ?? session.companyId,
-      role: membership?.role ?? null,
+      membershipId,
+      companyId,
+      role,
     });
 
     return {
@@ -297,7 +352,7 @@ export class AuthService {
       refreshToken: `${nextId}.${secret}`,
       tokenType: 'Bearer' as const,
       expiresIn: this.accessTtlSec,
-      requiresCompanySelection: !(membership?.id ?? session.membershipId),
+      requiresCompanySelection: !membershipId,
       sessionId: session.id,
     };
   }
@@ -323,6 +378,11 @@ export class AuthService {
     }
 
     const now = new Date();
+    const session = await this.prisma.session.findFirst({
+      where: { id: existing.sessionId },
+      select: { userId: true },
+    });
+
     await this.prisma.$transaction([
       this.prisma.refreshToken.updateMany({
         where: { sessionId: existing.sessionId, revokedAt: null },
@@ -334,7 +394,21 @@ export class AuthService {
       }),
     ]);
 
+    if (session?.userId) {
+      await this.revocation.invalidateAccessCacheForUser(session.userId);
+    }
+
     return { ok: true };
+  }
+
+  async logoutAll(current: AuthenticatedUser, meta?: RequestMeta) {
+    const result = await this.revocation.logoutAllDevices(current.sub, {
+      actorUserId: current.sub,
+      companyId: current.cid ?? null,
+      ip: meta?.ip,
+      userAgent: meta?.userAgent,
+    });
+    return { ok: true as const, revokedSessions: result.revokedSessions };
   }
 
   async me(current: AuthenticatedUser) {
@@ -485,6 +559,29 @@ export class AuthService {
       where: { sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /** AH6: keep at most N active sessions per user (revoke oldest). */
+  private async enforceSessionConcurrencyLimit(userId: string): Promise<void> {
+    const now = new Date();
+    const active = await this.prisma.session.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        deletedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+
+    const overflow = active.length - this.maxSessionsPerUser + 1;
+    if (overflow <= 0) return;
+
+    const toRevoke = active.slice(0, overflow);
+    for (const session of toRevoke) {
+      await this.revocation.revokeSession(session.id, 'MAX_SESSIONS');
+    }
   }
 
   private refreshExpiresAt(): Date {
