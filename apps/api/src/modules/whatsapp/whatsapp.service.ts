@@ -89,20 +89,20 @@ export class WhatsappService {
     private readonly inbound: WhatsappInboundService,
     private readonly delivery: WhatsappDeliveryService,
     private readonly channelMetrics: EvolutionChannelMetrics,
-    config: ConfigService,
+    private readonly config: ConfigService,
     @Optional()
     private readonly inboundProducer?: WhatsappInboundProducer,
   ) {
-    this.webhookSlowMs = config.get<number>(
+    this.webhookSlowMs = this.config.get<number>(
       'evolution.webhookSlowMs',
       WEBHOOK_SLOW_MS_DEFAULT,
     );
-    this.webhookMaxInflight = config.get<number>(
+    this.webhookMaxInflight = this.config.get<number>(
       'evolution.webhookMaxInflight',
       WEBHOOK_MAX_INFLIGHT_DEFAULT,
     );
     this.asyncInboundEnabled =
-      config.get<boolean>('async.inboundEnabled', false) === true;
+      this.config.get<boolean>('async.inboundEnabled', false) === true;
   }
 
   async connect(
@@ -269,8 +269,19 @@ export class WhatsappService {
 
     const correlationId = newCorrelationId();
 
-    // 7.1 — async inbound (flag). Rollback: ASYNC_INBOUND_ENABLED=false → sync.
-    if (this.asyncInboundEnabled && this.inboundProducer) {
+    // 7.1-H — async path never falls back to sync (dual-path removed).
+    // Rollback: ASYNC_INBOUND_ENABLED=false → sync dispatch below.
+    if (this.asyncInboundEnabled) {
+      if (!this.inboundProducer) {
+        await this.markWebhookEnqueueError(
+          webhookEvent.id,
+          'INBOUND_PRODUCER_UNAVAILABLE',
+        );
+        throw new ServiceUnavailableException(
+          'Async inbound enabled but producer is unavailable',
+        );
+      }
+
       try {
         const { jobId } = await this.inboundProducer.enqueue({
           v: 1,
@@ -288,9 +299,16 @@ export class WhatsappService {
           jobId,
         };
       } catch (err) {
-        // Fail-open to sync so RECEIVED events are not stuck if Redis blips.
-        this.logger.warn(
-          `inbound enqueue failed; falling back to sync correlationId=${correlationId}: ${err instanceof Error ? err.message : err}`,
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `inbound enqueue failed correlationId=${correlationId} webhookEventId=${webhookEvent.id}: ${message}`,
+        );
+        await this.markWebhookEnqueueError(
+          webhookEvent.id,
+          `ENQUEUE_FAILED: ${message}`.slice(0, 1000),
+        );
+        throw new ServiceUnavailableException(
+          'Failed to enqueue webhook for async processing',
         );
       }
     }
@@ -306,8 +324,13 @@ export class WhatsappService {
   }
 
   /**
-   * Worker entry (7.1) — process a previously RECEIVED webhook event.
+   * Worker entry (7.1-H) — claim then process a WebhookEvent.
    * Domain handlers unchanged; orchestration only.
+   *
+   * Claim strategy:
+   * - Atomic updateMany RECEIVED|FAILED → PROCESSING (one winner).
+   * - Stale PROCESSING (updatedAt older than claimStaleMs) may be reclaimed after stall.
+   * - Claim failure → job completes without domain work (no dual processing).
    */
   async processQueuedWebhook(
     job: WhatsappInboundJobPayload,
@@ -340,6 +363,20 @@ export class WhatsappService {
       };
     }
 
+    const claimed = await this.claimWebhookEvent(event.id, job.companyId);
+    if (!claimed) {
+      this.logger.warn(
+        `claim failed webhookEventId=${event.id} correlationId=${job.correlationId} status=${event.status}`,
+      );
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'CLAIM_FAILED',
+        correlationId: job.correlationId,
+        webhookEventId: event.id,
+      };
+    }
+
     const instance = await this.prisma.whatsAppInstance.findFirst({
       where: { id: job.instanceId, companyId: job.companyId, deletedAt: null },
     });
@@ -362,6 +399,69 @@ export class WhatsappService {
       webhookEventId: event.id,
       correlationId: job.correlationId,
     });
+  }
+
+  /**
+   * Atomic claim for inbound workers (7.1-H).
+   * @returns true when this worker owns PROCESSING.
+   */
+  async claimWebhookEvent(
+    eventId: string,
+    companyId: string,
+  ): Promise<boolean> {
+    const claimStaleMs = this.config.get<number>('async.claimStaleMs', 45_000);
+    const staleBefore = new Date(Date.now() - claimStaleMs);
+
+    const primary = await this.prisma.webhookEvent.updateMany({
+      where: {
+        id: eventId,
+        companyId,
+        deletedAt: null,
+        status: {
+          in: [WebhookEventStatus.RECEIVED, WebhookEventStatus.FAILED],
+        },
+      },
+      data: {
+        status: WebhookEventStatus.PROCESSING,
+        error: null,
+        processedAt: null,
+      },
+    });
+    if (primary.count === 1) {
+      return true;
+    }
+
+    const reclaim = await this.prisma.webhookEvent.updateMany({
+      where: {
+        id: eventId,
+        companyId,
+        deletedAt: null,
+        status: WebhookEventStatus.PROCESSING,
+        updatedAt: { lt: staleBefore },
+      },
+      data: {
+        status: WebhookEventStatus.PROCESSING,
+        error: null,
+        processedAt: null,
+      },
+    });
+    return reclaim.count === 1;
+  }
+
+  private async markWebhookEnqueueError(
+    webhookEventId: string,
+    error: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.webhookEvent.update({
+        where: { id: webhookEventId },
+        data: { error },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `failed to mark enqueue error on ${webhookEventId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   private async dispatchWebhookEvent(input: {
@@ -892,9 +992,7 @@ export class WhatsappService {
     ) {
       return true;
     }
-    return (
-      normalized.includes('connection') && !normalized.includes('message')
-    );
+    return normalized.includes('connection') && !normalized.includes('message');
   }
 
   private mapConnectionStatus(payload: Record<string, unknown>): {
@@ -905,8 +1003,7 @@ export class WhatsappService {
     const data = (payload.data ?? payload) as Record<string, unknown>;
     const stateRaw =
       data.state ?? data.status ?? (data as { connection?: string }).connection;
-    const state =
-      typeof stateRaw === 'string' ? stateRaw.toLowerCase() : null;
+    const state = typeof stateRaw === 'string' ? stateRaw.toLowerCase() : null;
 
     if (!state) return null;
 

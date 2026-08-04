@@ -89,16 +89,34 @@ export default () => {
       inboundEnabled: (process.env.ASYNC_INBOUND_ENABLED ?? 'false') === 'true',
       /** A2 — run Bull workers inside API process. */
       workersInApi: (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true',
-      inboundAttempts: parseInt(
-        process.env.ASYNC_INBOUND_ATTEMPTS ?? '5',
-        10,
-      ),
+      inboundAttempts: parseInt(process.env.ASYNC_INBOUND_ATTEMPTS ?? '5', 10),
       inboundBackoffMs: parseInt(
         process.env.ASYNC_INBOUND_BACKOFF_MS ?? '2000',
         10,
       ),
-      inboundConcurrency: parseInt(
-        process.env.ASYNC_INBOUND_CONCURRENCY ?? '10',
+      concurrency: parseInt(
+        process.env.QUEUE_CONCURRENCY ??
+          process.env.ASYNC_INBOUND_CONCURRENCY ??
+          '10',
+        10,
+      ),
+      removeOnComplete: parseInt(
+        process.env.QUEUE_REMOVE_ON_COMPLETE ?? '1000',
+        10,
+      ),
+      removeOnFail: parseInt(process.env.QUEUE_REMOVE_ON_FAIL ?? '5000', 10),
+      dlqMaxJobs: parseInt(process.env.QUEUE_DLQ_MAX_JOBS ?? '1000', 10),
+      dlqRetentionMs: parseInt(
+        process.env.QUEUE_DLQ_RETENTION_MS ?? String(7 * 24 * 60 * 60 * 1000),
+        10,
+      ),
+      dlqStaleMs: parseInt(
+        process.env.QUEUE_DLQ_STALE_MS ?? String(60 * 60 * 1000),
+        10,
+      ),
+      claimStaleMs: parseInt(process.env.WEBHOOK_CLAIM_STALE_MS ?? '45000', 10),
+      receivedStaleMs: parseInt(
+        process.env.WEBHOOK_RECEIVED_STALE_MS ?? String(5 * 60 * 1000),
         10,
       ),
     },

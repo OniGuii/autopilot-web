@@ -32,7 +32,30 @@ describe('WhatsappInboundProducer', () => {
       expect.objectContaining({
         jobId: 'webhook:we-1',
         attempts: 5,
+        removeOnComplete: 1000,
+        removeOnFail: 5000,
       }),
     );
+  });
+
+  it('treats jobId already exists as success', async () => {
+    const add = jest
+      .fn()
+      .mockRejectedValue(new Error('Job webhook:we-1 already exists'));
+    const producer = new WhatsappInboundProducer(
+      { add } as never,
+      { get: jest.fn((_k: string, def?: unknown) => def) } as never,
+    );
+
+    const result = await producer.enqueue({
+      v: 1,
+      companyId: 'c1',
+      webhookEventId: 'we-1',
+      instanceId: 'i1',
+      eventType: 'messages.upsert',
+      correlationId: 'corr-1',
+    });
+
+    expect(result.jobId).toBe('webhook:we-1');
   });
 });

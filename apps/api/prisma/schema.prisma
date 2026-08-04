@@ -85,6 +85,7 @@ enum WhatsAppConnectionStatus {
 
 enum WebhookEventStatus {
   RECEIVED
+  PROCESSING
   PROCESSED
   FAILED
   IGNORED

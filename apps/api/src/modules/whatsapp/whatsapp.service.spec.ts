@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { WebhookEventStatus } from '@prisma/client';
@@ -96,7 +97,7 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
 
     const service = new WhatsappService(
       prisma as never,
-      audit as never,
+      audit,
       evolution as never,
       inbound as never,
       delivery as never,
@@ -158,10 +159,13 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
         create: jest.fn().mockResolvedValue({ id: 'we-async-1' }),
         update: jest.fn(),
         findFirst: jest.fn(),
+        updateMany: jest.fn(),
       },
       $transaction: jest.fn(),
     };
-    const enqueue = jest.fn().mockResolvedValue({ jobId: 'webhook:we-async-1' });
+    const enqueue = jest
+      .fn()
+      .mockResolvedValue({ jobId: 'webhook:we-async-1' });
     const config = {
       get: jest.fn((key: string, def?: unknown) => {
         if (key === 'async.inboundEnabled') return true;
@@ -170,7 +174,7 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
     };
     const service = new WhatsappService(
       prisma as never,
-      { write: jest.fn() } as never,
+      { write: jest.fn() },
       {} as never,
       { processInboundMessage: jest.fn() } as never,
       {
@@ -208,6 +212,106 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
         webhookEventId: 'we-async-1',
         companyId,
         correlationId: expect.any(String),
+      }),
+    );
+  });
+
+  it('returns 503 when async enqueue fails (no sync fallback)', async () => {
+    const hash = await argon2.hash(plainSecret);
+    const instance = {
+      id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      companyId,
+      instanceKey,
+      webhookSecretHash: hash,
+      status: 'CONNECTED',
+      deletedAt: null,
+    };
+    const update = jest.fn();
+    const prisma = {
+      whatsAppInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      webhookEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'we-async-fail' }),
+        update,
+        findFirst: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    };
+    const inbound = { processInboundMessage: jest.fn() };
+    const service = new WhatsappService(
+      prisma as never,
+      { write: jest.fn() },
+      {} as never,
+      inbound as never,
+      {
+        applyDeliveryUpdate: jest.fn(),
+        healEchoRace: jest.fn(),
+      } as never,
+      {
+        beginWebhook: jest.fn(),
+        endWebhook: jest.fn(),
+        recordWebhook: jest.fn(),
+        recordConnectionFlap: jest.fn(),
+      } as never,
+      {
+        get: jest.fn((key: string, def?: unknown) => {
+          if (key === 'async.inboundEnabled') return true;
+          return def;
+        }),
+      } as never,
+      {
+        enqueue: jest.fn().mockRejectedValue(new Error('redis timeout')),
+      } as never,
+    );
+
+    await expect(
+      service.handleWebhook(instanceKey, plainSecret, inboundPayload),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(inbound.processInboundMessage).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'we-async-fail' },
+        data: expect.objectContaining({
+          error: expect.stringContaining('ENQUEUE_FAILED'),
+        }),
+      }),
+    );
+  });
+
+  it('claimWebhookEvent wins only once (atomic)', async () => {
+    const updateMany = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+    const service = new WhatsappService(
+      { webhookEvent: { updateMany } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        get: jest.fn((_k: string, def?: unknown) => def),
+      } as never,
+    );
+
+    await expect(service.claimWebhookEvent('we-1', companyId)).resolves.toBe(
+      true,
+    );
+    await expect(service.claimWebhookEvent('we-1', companyId)).resolves.toBe(
+      false,
+    );
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: {
+            in: [WebhookEventStatus.RECEIVED, WebhookEventStatus.FAILED],
+          },
+        }),
+        data: expect.objectContaining({
+          status: WebhookEventStatus.PROCESSING,
+        }),
       }),
     );
   });

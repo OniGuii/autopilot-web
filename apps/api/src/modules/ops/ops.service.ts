@@ -38,15 +38,26 @@ export type OpsMetrics = {
   webhookP95Ms: number | null;
   webhookSlowLast15m: number;
   webhookInflight: number;
+  staleReceivedWebhooks: number;
   queues: {
+    /** false when Bull/Redis metrics collection failed */
+    available: boolean;
+    error?: string;
     whatsappInbound: {
       waiting: number;
       active: number;
       completed: number;
       failed: number;
       delayed: number;
-    };
-    dlqWhatsappInbound: number;
+    } | null;
+    /** Depth; null when unavailable (never masked as 0). */
+    dlqWhatsappInbound: number | null;
+    dlqDepth: number | null;
+    oldestDlqAgeMs: number | null;
+    processingDurationP95Ms: number | null;
+    retriesTotal: number;
+    stalledTotal: number;
+    claimFailuresTotal: number;
   };
 };
 
@@ -67,6 +78,8 @@ export type ReconcileResult = {
 @Injectable()
 export class OpsService {
   private readonly reconcileTake: number;
+  private readonly receivedStaleMs: number;
+  private readonly dlqStaleMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,6 +92,11 @@ export class OpsService {
       'ops.reconcileTake',
       OPS_RECONCILE_TAKE_DEFAULT,
     );
+    this.receivedStaleMs = config.get<number>(
+      'async.receivedStaleMs',
+      5 * 60 * 1000,
+    );
+    this.dlqStaleMs = config.get<number>('async.dlqStaleMs', 60 * 60 * 1000);
   }
 
   async getOverview(actor: CompanyActor) {
@@ -155,9 +173,19 @@ export class OpsService {
       }),
     ]);
 
-    const [channel, queues] = await Promise.all([
+    const staleBefore = new Date(Date.now() - this.receivedStaleMs);
+
+    const [channel, queues, staleReceivedWebhooks] = await Promise.all([
       Promise.resolve(this.evolution.getMetricsSnapshot()),
       this.asyncMetrics.snapshot(),
+      this.prisma.webhookEvent.count({
+        where: {
+          companyId,
+          deletedAt: null,
+          status: WebhookEventStatus.RECEIVED,
+          receivedAt: { lt: staleBefore },
+        },
+      }),
     ]);
 
     return {
@@ -175,9 +203,18 @@ export class OpsService {
       webhookP95Ms: channel.webhookP95Ms,
       webhookSlowLast15m: channel.webhookSlowLast15m,
       webhookInflight: channel.webhookInflight,
+      staleReceivedWebhooks,
       queues: {
+        available: queues.available,
+        ...(queues.error ? { error: queues.error } : {}),
         whatsappInbound: queues.whatsappInbound,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
+        dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
+        oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
+        processingDurationP95Ms: queues.processingDurationP95Ms,
+        retriesTotal: queues.retriesTotal,
+        stalledTotal: queues.stalledTotal,
+        claimFailuresTotal: queues.claimFailuresTotal,
       },
     };
   }
@@ -300,21 +337,55 @@ export class OpsService {
       });
     }
 
-    if (metrics.queues.whatsappInbound.waiting >= 100) {
+    if (!metrics.queues.available) {
+      alerts.push({
+        code: 'QUEUE_METRICS_UNAVAILABLE',
+        severity: 'error',
+        message: 'Bull/Redis queue metrics unavailable',
+      });
+    }
+
+    const waiting = metrics.queues.whatsappInbound?.waiting;
+    if (typeof waiting === 'number' && waiting >= 100) {
       alerts.push({
         code: 'QUEUE_BACKLOG_HIGH',
         severity: 'warning',
         message: 'whatsapp-inbound waiting backlog is high',
-        count: metrics.queues.whatsappInbound.waiting,
+        count: waiting,
       });
     }
 
-    if (metrics.queues.dlqWhatsappInbound > 0) {
+    const dlqDepth =
+      metrics.queues.dlqDepth ?? metrics.queues.dlqWhatsappInbound;
+    if (typeof dlqDepth === 'number' && dlqDepth > 0) {
       alerts.push({
         code: 'QUEUE_DLQ_DEPTH',
         severity: 'warning',
         message: 'whatsapp-inbound DLQ has jobs',
-        count: metrics.queues.dlqWhatsappInbound,
+        count: dlqDepth,
+      });
+    }
+
+    const oldestDlqAgeMs = metrics.queues.oldestDlqAgeMs;
+    if (
+      typeof oldestDlqAgeMs === 'number' &&
+      oldestDlqAgeMs >= this.dlqStaleMs
+    ) {
+      alerts.push({
+        code: 'QUEUE_DLQ_STALE',
+        severity: 'warning',
+        message: 'whatsapp-inbound DLQ has stale jobs',
+        count: oldestDlqAgeMs,
+      });
+    }
+
+    if (metrics.staleReceivedWebhooks > 0) {
+      alerts.push({
+        code: 'WEBHOOK_EVENT_STALE',
+        severity: 'warning',
+        message:
+          'WebhookEvent RECEIVED older than stale threshold (no auto-replay)',
+        count: metrics.staleReceivedWebhooks,
       });
     }
 
@@ -338,11 +409,13 @@ export class OpsService {
       this.checkWhatsapp(companyId),
     ]);
 
+    // Status vocabulary: ok | degraded | error (OK / DEGRADED / ERROR).
     let status: 'ok' | 'degraded' | 'error' = 'ok';
     if (postgres === 'down') {
       status = 'error';
     } else if (
       redis === 'down' ||
+      !queues.available ||
       whatsapp === 'down' ||
       channel.evolutionCircuitState === 'OPEN'
     ) {
@@ -355,8 +428,16 @@ export class OpsService {
       redis,
       whatsapp,
       queues: {
+        available: queues.available,
+        ...(queues.error ? { error: queues.error } : {}),
         whatsappInbound: queues.whatsappInbound,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
+        dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
+        oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
+        processingDurationP95Ms: queues.processingDurationP95Ms,
+        retriesTotal: queues.retriesTotal,
+        stalledTotal: queues.stalledTotal,
+        claimFailuresTotal: queues.claimFailuresTotal,
       },
       evolution: {
         circuit: channel.evolutionCircuitState,

@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { AsyncLifecycleService } from './async-lifecycle.service';
 import {
   ASYNC_QUEUE_PREFIX,
   QUEUE_DLQ_WHATSAPP_INBOUND,
@@ -39,7 +40,12 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
       { name: QUEUE_DLQ_WHATSAPP_INBOUND },
     ),
   ],
-  providers: [WhatsappInboundProducer, DlqService, AsyncMetricsService],
+  providers: [
+    WhatsappInboundProducer,
+    DlqService,
+    AsyncMetricsService,
+    AsyncLifecycleService,
+  ],
   exports: [
     BullModule,
     WhatsappInboundProducer,
