@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import {
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
+  QUEUE_RECONCILE_WORKER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 import { DlqService } from './dlq.service';
@@ -24,12 +25,20 @@ export type DlqMetrics = {
   oldestAgeMs: number | null;
 };
 
+export type ReconcileMetrics = {
+  runs: number;
+  durationMs: number | null;
+  itemsChecked: number;
+  itemsFlagged: number;
+};
+
 export type QueueMetricsSnapshot = {
   /** false when Redis/Bull collection failed — never invent zeros. */
   available: boolean;
   error?: string;
   whatsappInbound: QueueCounts | null;
   followupScheduler: QueueCounts | null;
+  reconcileWorker: QueueCounts | null;
   dlq: DlqMetrics | null;
   /** Back-compat depth mirror; null when unavailable. */
   dlqWhatsappInbound: number | null;
@@ -37,6 +46,7 @@ export type QueueMetricsSnapshot = {
   retriesTotal: number;
   stalledTotal: number;
   claimFailuresTotal: number;
+  reconcile: ReconcileMetrics;
 };
 
 /**
@@ -50,6 +60,10 @@ export class AsyncMetricsService {
   private stalledTotal = 0;
   private claimFailuresTotal = 0;
   private durations: { at: number; ms: number }[] = [];
+  private reconcileRuns = 0;
+  private reconcileItemsChecked = 0;
+  private reconcileItemsFlagged = 0;
+  private lastReconcileDurationMs: number | null = null;
 
   constructor(
     @InjectQueue(QUEUE_WHATSAPP_INBOUND)
@@ -58,6 +72,8 @@ export class AsyncMetricsService {
     private readonly dlqQueue: Queue,
     @InjectQueue(QUEUE_FOLLOWUP_SCHEDULER)
     private readonly followupScheduler: Queue,
+    @InjectQueue(QUEUE_RECONCILE_WORKER)
+    private readonly reconcileWorker: Queue,
     private readonly dlq: DlqService,
   ) {}
 
@@ -79,38 +95,64 @@ export class AsyncMetricsService {
     this.claimFailuresTotal += 1;
   }
 
+  recordReconcileRun(input: {
+    durationMs: number;
+    itemsChecked: number;
+    itemsFlagged: number;
+  }): void {
+    this.reconcileRuns += 1;
+    this.lastReconcileDurationMs = input.durationMs;
+    this.reconcileItemsChecked += input.itemsChecked;
+    this.reconcileItemsFlagged += input.itemsFlagged;
+  }
+
   async snapshot(): Promise<QueueMetricsSnapshot> {
     const counters = {
       processingDurationP95Ms: this.p95DurationMs(),
       retriesTotal: this.retriesTotal,
       stalledTotal: this.stalledTotal,
       claimFailuresTotal: this.claimFailuresTotal,
+      reconcile: {
+        runs: this.reconcileRuns,
+        durationMs: this.lastReconcileDurationMs,
+        itemsChecked: this.reconcileItemsChecked,
+        itemsFlagged: this.reconcileItemsFlagged,
+      } satisfies ReconcileMetrics,
     };
 
     try {
       await this.dlq.cleanup();
-      const [inboundCounts, followupCounts, dlqMetrics] = await Promise.all([
-        this.inbound.getJobCounts(
-          'waiting',
-          'active',
-          'completed',
-          'failed',
-          'delayed',
-        ),
-        this.followupScheduler.getJobCounts(
-          'waiting',
-          'active',
-          'completed',
-          'failed',
-          'delayed',
-        ),
-        this.dlq.getMetrics(),
-      ]);
+      const [inboundCounts, followupCounts, reconcileCounts, dlqMetrics] =
+        await Promise.all([
+          this.inbound.getJobCounts(
+            'waiting',
+            'active',
+            'completed',
+            'failed',
+            'delayed',
+          ),
+          this.followupScheduler.getJobCounts(
+            'waiting',
+            'active',
+            'completed',
+            'failed',
+            'delayed',
+          ),
+          this.reconcileWorker.getJobCounts(
+            'waiting',
+            'active',
+            'completed',
+            'failed',
+            'delayed',
+          ),
+          this.dlq.getMetrics(),
+        ]);
 
       return {
         available: true,
         whatsappInbound: toCounts(inboundCounts),
         followupScheduler: toCounts(followupCounts),
+        reconcileWorker: toCounts(reconcileCounts),
         dlq: dlqMetrics,
         dlqWhatsappInbound: dlqMetrics.depth,
         ...counters,
@@ -123,6 +165,7 @@ export class AsyncMetricsService {
         error: message.slice(0, 500),
         whatsappInbound: null,
         followupScheduler: null,
+        reconcileWorker: null,
         dlq: null,
         dlqWhatsappInbound: null,
         ...counters,

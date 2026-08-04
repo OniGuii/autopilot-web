@@ -8,12 +8,15 @@ import {
   ASYNC_QUEUE_PREFIX,
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
+  QUEUE_RECONCILE_WORKER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 import { AsyncMetricsService } from './async-metrics.service';
 import { DlqService } from './dlq.service';
 import { FollowUpDueScanner } from './followup-due.scanner';
 import { FollowUpSchedulerProducer } from './producers/followup-scheduler.producer';
+import { ReconcileProducer } from './producers/reconcile.producer';
+import { ReconcileScheduler } from './reconcile.scheduler';
 import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
 
 /**
@@ -37,7 +40,6 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
             host: config.get<string>('redis.host', 'localhost'),
             port: config.get<number>('redis.port', 6379),
             ...(password ? { password } : {}),
-            // BullMQ requires null (blocking commands).
             maxRetriesPerRequest: null,
           },
         };
@@ -47,12 +49,15 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
       { name: QUEUE_WHATSAPP_INBOUND },
       { name: QUEUE_DLQ_WHATSAPP_INBOUND },
       { name: QUEUE_FOLLOWUP_SCHEDULER },
+      { name: QUEUE_RECONCILE_WORKER },
     ),
   ],
   providers: [
     WhatsappInboundProducer,
     FollowUpSchedulerProducer,
     FollowUpDueScanner,
+    ReconcileProducer,
+    ReconcileScheduler,
     DlqService,
     AsyncMetricsService,
     AsyncLifecycleService,
@@ -61,6 +66,7 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
     BullModule,
     WhatsappInboundProducer,
     FollowUpSchedulerProducer,
+    ReconcileProducer,
     DlqService,
     AsyncMetricsService,
   ],

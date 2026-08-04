@@ -9,8 +9,12 @@ export const QUEUE_DLQ_WHATSAPP_INBOUND = 'dlq-whatsapp-inbound';
 /** 7.2A — due FollowUp scheduler */
 export const QUEUE_FOLLOWUP_SCHEDULER = 'followup-scheduler';
 
+/** 7.2B — operational reconcile */
+export const QUEUE_RECONCILE_WORKER = 'reconcile-worker';
+
 export const WHATSAPP_INBOUND_JOB_NAME = 'process-webhook';
 export const FOLLOWUP_SCHEDULER_JOB_NAME = 'execute-due-followup';
+export const RECONCILE_CYCLE_JOB_NAME = 'reconcile-cycle';
 
 export const WHATSAPP_INBOUND_ATTEMPTS_DEFAULT = 5;
 export const WHATSAPP_INBOUND_BACKOFF_MS_DEFAULT = 2_000;
@@ -41,6 +45,13 @@ export const WEBHOOK_CLAIM_STALE_MS_DEFAULT = 45_000;
 export const WEBHOOK_RECEIVED_STALE_MS_DEFAULT = 5 * 60 * 1000;
 
 export const FOLLOWUP_SCAN_LOCK_KEY = 'autopilot:followup:scan';
+export const RECONCILE_SCAN_LOCK_KEY = 'autopilot:reconcile:scan';
+
+export const RECONCILE_ATTEMPTS_DEFAULT = 2;
+export const RECONCILE_BACKOFF_MS_DEFAULT = 30_000;
+export const RECONCILE_CONCURRENCY_DEFAULT = 1;
+export const RECONCILE_SCAN_INTERVAL_MS_DEFAULT = 5 * 60 * 1000;
+export const RECONCILE_TAKE_DEFAULT = 100;
 
 /** Resolve concurrency at module load (decorator options are static). */
 export function resolveQueueConcurrency(): number {
@@ -60,4 +71,11 @@ export function resolveFollowupSchedulerConcurrency(): number {
   return Number.isFinite(n) && n >= 1
     ? n
     : FOLLOWUP_SCHEDULER_CONCURRENCY_DEFAULT;
+}
+
+export function resolveReconcileConcurrency(): number {
+  const raw =
+    process.env.RECONCILE_CONCURRENCY ?? String(RECONCILE_CONCURRENCY_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : RECONCILE_CONCURRENCY_DEFAULT;
 }

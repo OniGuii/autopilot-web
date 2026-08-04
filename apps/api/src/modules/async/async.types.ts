@@ -18,6 +18,14 @@ export type FollowUpSchedulerJobPayload = {
   trigger: 'schedule';
 };
 
+export type ReconcileCycleJobPayload = {
+  v: 1;
+  correlationId: string;
+  trigger: 'schedule';
+  /** Cap items inspected/flagged across all companies in this cycle. */
+  take: number;
+};
+
 export type DlqJobPayload = {
   v: 1;
   originalQueue: string;

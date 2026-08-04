@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import {
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
+  QUEUE_RECONCILE_WORKER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 
@@ -23,6 +24,8 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
     private readonly dlq: Queue,
     @InjectQueue(QUEUE_FOLLOWUP_SCHEDULER)
     private readonly followupScheduler: Queue,
+    @InjectQueue(QUEUE_RECONCILE_WORKER)
+    private readonly reconcileWorker: Queue,
   ) {}
 
   async onApplicationShutdown(signal?: string): Promise<void> {
@@ -33,12 +36,14 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
     await Promise.allSettled([
       this.inbound.pause(),
       this.followupScheduler.pause(),
+      this.reconcileWorker.pause(),
     ]);
 
     await Promise.allSettled([
       this.inbound.close(),
       this.dlq.close(),
       this.followupScheduler.close(),
+      this.reconcileWorker.close(),
     ]);
     this.logger.log('queue shutdown complete');
   }

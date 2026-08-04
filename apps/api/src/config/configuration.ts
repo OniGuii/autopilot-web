@@ -146,6 +146,26 @@ export default () => {
         process.env.FOLLOWUP_SCHEDULER_BACKLOG_HIGH ?? '100',
         10,
       ),
+      /** 7.2B — reconcile worker (default off). */
+      reconcileEnabled:
+        (process.env.ASYNC_RECONCILE_ENABLED ?? 'false') === 'true',
+      reconcileAttempts: parseInt(process.env.RECONCILE_ATTEMPTS ?? '2', 10),
+      reconcileBackoffMs: parseInt(
+        process.env.RECONCILE_BACKOFF_MS ?? '30000',
+        10,
+      ),
+      reconcileConcurrency: parseInt(
+        process.env.RECONCILE_CONCURRENCY ?? '1',
+        10,
+      ),
+      reconcileScanIntervalMs: parseInt(
+        process.env.RECONCILE_SCAN_INTERVAL_MS ?? String(5 * 60 * 1000),
+        10,
+      ),
+      reconcileTake: parseInt(
+        process.env.RECONCILE_TAKE ?? process.env.OPS_RECONCILE_TAKE ?? '100',
+        10,
+      ),
     },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {
