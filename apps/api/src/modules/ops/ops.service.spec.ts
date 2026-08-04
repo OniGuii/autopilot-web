@@ -261,6 +261,19 @@ describe('OpsService', () => {
               failed: 0,
               delayed: 0,
             },
+      outbound:
+        opts?.redisOk === false
+          ? null
+          : {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0,
+              sent: 0,
+              failures: 0,
+              avgDuration: null,
+            },
       reconcile: {
         runs: 0,
         durationMs: null,
@@ -474,6 +487,16 @@ describe('OpsService', () => {
           failed: 0,
           delayed: 0,
         },
+        outbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+          sent: 0,
+          failures: 0,
+          avgDuration: null,
+        },
         dlq: { depth: 0, oldestAgeMs: null },
         dlqWhatsappInbound: 0,
         processingDurationP95Ms: null,
@@ -494,6 +517,70 @@ describe('OpsService', () => {
     const codes = result.alerts.map((a) => a.code);
     expect(codes).toContain('AI_QUEUE_BACKLOG_HIGH');
     expect(codes).toContain('AI_GENERATION_FAILURE_RATE');
+  });
+
+  it('alerts OUTBOUND_QUEUE_BACKLOG_HIGH and OUTBOUND_FAILURE_RATE (8C)', async () => {
+    const { service } = build({
+      queueSnapshot: {
+        available: true,
+        whatsappInbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        followupScheduler: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        reconcileWorker: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        aiSuggestions: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        outbound: {
+          waiting: 120,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+          sent: 2,
+          failures: 10,
+          avgDuration: 400,
+        },
+        dlq: { depth: 0, oldestAgeMs: null },
+        dlqWhatsappInbound: 0,
+        processingDurationP95Ms: null,
+        retriesTotal: 0,
+        stalledTotal: 0,
+        claimFailuresTotal: 0,
+        reconcile: {
+          runs: 0,
+          durationMs: null,
+          itemsChecked: 0,
+          itemsFlagged: 0,
+        },
+        ai: { generated: 0, failed: 0, avgDuration: null },
+      },
+    });
+
+    const result = await service.getAlerts(actor);
+    const codes = result.alerts.map((a) => a.code);
+    expect(codes).toContain('OUTBOUND_QUEUE_BACKLOG_HIGH');
+    expect(codes).toContain('OUTBOUND_FAILURE_RATE');
   });
 
   it('builds alerts when whatsapp disconnected and pending stale', async () => {

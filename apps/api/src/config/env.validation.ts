@@ -150,6 +150,19 @@ export const envValidationSchema = Joi.object({
   AI_FAILURE_RATE_MIN_SAMPLES: Joi.number().integer().min(1).default(10),
   AI_FAILURE_RATE_THRESHOLD: Joi.number().min(0).max(1).default(0.5),
 
+  /** 8C — Outbound send worker (default off = sync POST /whatsapp/send). */
+  ASYNC_OUTBOUND_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  OUTBOUND_SEND_ATTEMPTS: Joi.number().integer().min(1).default(1),
+  OUTBOUND_SEND_BACKOFF_MS: Joi.number().integer().min(100).default(3_000),
+  OUTBOUND_SEND_CONCURRENCY: Joi.number().integer().min(1).default(5),
+  OUTBOUND_SEND_LOCK_DURATION_MS: Joi.number()
+    .integer()
+    .min(5_000)
+    .default(45_000),
+  OUTBOUND_QUEUE_BACKLOG_HIGH: Joi.number().integer().min(1).default(100),
+  OUTBOUND_FAILURE_RATE_MIN_SAMPLES: Joi.number().integer().min(1).default(10),
+  OUTBOUND_FAILURE_RATE_THRESHOLD: Joi.number().min(0).max(1).default(0.5),
+
   /** 8A — Observability Foundation */
   OTEL_ENABLED: Joi.string().valid('true', 'false').default('false'),
   OTEL_SERVICE_NAME: Joi.string().default('autopilot-api'),

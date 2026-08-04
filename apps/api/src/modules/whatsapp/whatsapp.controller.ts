@@ -94,7 +94,7 @@ export class WhatsappController {
     @Body() dto: SendWhatsappMessageDto,
     @Req() req: Request,
   ) {
-    return this.whatsappSendService.send(this.asCompanyActor(user), dto, {
+    return this.whatsappSendService.sendHttp(this.asCompanyActor(user), dto, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });

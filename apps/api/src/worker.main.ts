@@ -39,7 +39,7 @@ async function bootstrap() {
     void shutdownOpenTelemetry();
   });
   Logger.log(
-    'AutoPilot workers running (whatsapp-inbound, followup-scheduler, reconcile-worker, ai-suggestions)',
+    'AutoPilot workers running (whatsapp-inbound, followup-scheduler, reconcile-worker, ai-suggestions, outbound-send)',
     'WorkerBootstrap',
   );
 }

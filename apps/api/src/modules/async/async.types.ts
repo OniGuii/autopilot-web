@@ -38,6 +38,19 @@ export type AiSuggestionJobPayload = {
   userAgent?: string;
 };
 
+/** 8C — WhatsApp outbound delivery (Message already PENDING). */
+export type OutboundSendJobPayload = {
+  v: 1;
+  companyId: string;
+  messageId: string;
+  leadId: string;
+  conversationId: string;
+  actorUserId: string;
+  correlationId: string;
+  ip?: string;
+  userAgent?: string;
+};
+
 export type DlqJobPayload = {
   v: 1;
   originalQueue: string;

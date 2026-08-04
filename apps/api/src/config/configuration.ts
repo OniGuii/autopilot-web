@@ -196,6 +196,36 @@ export default () => {
       aiFailureRateThreshold: parseFloat(
         process.env.AI_FAILURE_RATE_THRESHOLD ?? '0.5',
       ),
+      /** 8C — outbound send worker (default off = sync POST /whatsapp/send). */
+      outboundEnabled:
+        (process.env.ASYNC_OUTBOUND_ENABLED ?? 'false') === 'true',
+      outboundSendAttempts: parseInt(
+        process.env.OUTBOUND_SEND_ATTEMPTS ?? '1',
+        10,
+      ),
+      outboundSendBackoffMs: parseInt(
+        process.env.OUTBOUND_SEND_BACKOFF_MS ?? '3000',
+        10,
+      ),
+      outboundSendConcurrency: parseInt(
+        process.env.OUTBOUND_SEND_CONCURRENCY ?? '5',
+        10,
+      ),
+      outboundSendLockDurationMs: parseInt(
+        process.env.OUTBOUND_SEND_LOCK_DURATION_MS ?? '45000',
+        10,
+      ),
+      outboundQueueBacklogHigh: parseInt(
+        process.env.OUTBOUND_QUEUE_BACKLOG_HIGH ?? '100',
+        10,
+      ),
+      outboundFailureRateMinSamples: parseInt(
+        process.env.OUTBOUND_FAILURE_RATE_MIN_SAMPLES ?? '10',
+        10,
+      ),
+      outboundFailureRateThreshold: parseFloat(
+        process.env.OUTBOUND_FAILURE_RATE_THRESHOLD ?? '0.5',
+      ),
     },
     /** Fase 8A — Observability Foundation */
     observability: {

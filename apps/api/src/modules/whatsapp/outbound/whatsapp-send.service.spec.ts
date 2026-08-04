@@ -45,13 +45,21 @@ describe('WhatsappSendService', () => {
     conversation?: unknown;
     instance?: unknown;
     sendError?: Error;
+    asyncOutboundEnabled?: boolean;
+    enqueue?: {
+      jobId: string;
+      deduped: boolean;
+    };
+    enqueueError?: Error;
   }) {
     const audits: unknown[] = [];
     const messages: Array<Record<string, unknown>> = [];
 
     const prisma = {
       lead: {
-        findFirst: jest.fn().mockResolvedValue(opts?.lead === undefined ? lead : opts.lead),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(opts?.lead === undefined ? lead : opts.lead),
         update: jest.fn().mockResolvedValue({}),
       },
       conversation: {
@@ -106,13 +114,47 @@ describe('WhatsappSendService', () => {
           }),
     };
 
+    const config = {
+      get: jest.fn((key: string, def?: unknown) => {
+        if (key === 'async.outboundEnabled') {
+          return opts?.asyncOutboundEnabled === true;
+        }
+        return def;
+      }),
+    };
+
+    const producer =
+      opts?.asyncOutboundEnabled === true
+        ? {
+            enqueue: opts.enqueueError
+              ? jest.fn().mockRejectedValue(opts.enqueueError)
+              : jest.fn().mockResolvedValue(
+                  opts.enqueue ?? {
+                    jobId: 'outbound:msg-pending-1',
+                    deduped: false,
+                  },
+                ),
+          }
+        : undefined;
+
     const service = new WhatsappSendService(
       prisma as never,
-      audit as never,
+      audit,
       evolution as never,
+      config as never,
+      producer as never,
     );
 
-    return { service, prisma, audit, evolution, audits, messages };
+    return {
+      service,
+      prisma,
+      audit,
+      evolution,
+      audits,
+      messages,
+      config,
+      producer,
+    };
   }
 
   it('sends outbound with PENDING→SENT, timestamps and audit', async () => {
@@ -271,7 +313,7 @@ describe('WhatsappSendService', () => {
 
   it('returns 503 without creating PENDING when circuit is open (CH5)', async () => {
     const { service, prisma, evolution } = build();
-    (evolution.assertAvailable as jest.Mock).mockImplementation(() => {
+    evolution.assertAvailable.mockImplementation(() => {
       throw new ServiceUnavailableException({
         message: 'CHANNEL_UNAVAILABLE',
       });
@@ -286,5 +328,56 @@ describe('WhatsappSendService', () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.message.create).not.toHaveBeenCalled();
   });
-});
 
+  it('sendHttp async: PENDING + enqueue + accepted (8C)', async () => {
+    const { service, evolution, producer, messages } = build({
+      asyncOutboundEnabled: true,
+      enqueue: { jobId: 'outbound:msg-pending-1', deduped: false },
+    });
+
+    const result = await service.sendHttp(actor, {
+      leadId: lead.id,
+      conversationId: conversation.id,
+      body: 'async hello',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        accepted: true,
+        status: OUTBOUND_MESSAGE_STATUS.PENDING,
+        jobId: 'outbound:msg-pending-1',
+        leadId: lead.id,
+        conversationId: conversation.id,
+      }),
+    );
+    expect(messages[0]?.status).toBe(OUTBOUND_MESSAGE_STATUS.PENDING);
+    expect(producer?.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId,
+        leadId: lead.id,
+        conversationId: conversation.id,
+      }),
+    );
+    expect(evolution.sendText).not.toHaveBeenCalled();
+  });
+
+  it('send() remains sync even when async flag is on (FollowUp path)', async () => {
+    const { service, evolution } = build({ asyncOutboundEnabled: true });
+
+    const result = await service.send(actor, {
+      leadId: lead.id,
+      conversationId: conversation.id,
+      body: 'followup sync',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        status: OUTBOUND_MESSAGE_STATUS.SENT,
+        externalMessageId: 'EVO_OUT_1',
+      }),
+    );
+    expect(evolution.sendText).toHaveBeenCalled();
+  });
+});
