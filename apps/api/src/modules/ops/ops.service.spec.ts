@@ -159,8 +159,8 @@ describe('OpsService', () => {
       $queryRaw: jest.fn().mockImplementation(async (strings: unknown) => {
         if (opts?.postgresOk === false) throw new Error('db down');
         const sql = Array.isArray(strings)
-          ? strings.join(' ')
-          : String(strings ?? '');
+          ? (strings as TemplateStringsArray).join(' ')
+          : '';
         if (sql.includes('pg_stat_user_tables')) {
           return opts?.seqScanRows ?? [];
         }

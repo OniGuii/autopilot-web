@@ -22,21 +22,20 @@ describe('applyRlsSessionGuc (8B)', () => {
   });
 
   it('sets bypass on and clears company_id when bypass ALS is active', async () => {
-    const values: unknown[][] = [];
+    const sqlParts: string[] = [];
     const tx = {
-      $executeRaw: jest.fn(
-        async (strings: TemplateStringsArray, ...params: unknown[]) => {
-          values.push([strings.join('?'), ...params]);
-          return 1;
-        },
-      ),
+      $executeRaw: jest.fn(async (strings: TemplateStringsArray) => {
+        sqlParts.push(strings.join(''));
+        return 1;
+      }),
     };
 
     await runWithRlsBypass(() => applyRlsSessionGuc(tx));
 
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
-    expect(String(values[0]?.[0])).toContain('app.rls_bypass');
-    expect(values[0]?.[1]).toBe('on');
+    expect(sqlParts[0]).toContain('app.rls_bypass');
+    expect(sqlParts[0]).toContain("'on'");
+    expect(sqlParts[1]).toContain('app.company_id');
   });
 
   it('clears company_id when tenant context is missing', async () => {
