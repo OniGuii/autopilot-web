@@ -2,8 +2,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
   WebhookEventStatus,
@@ -15,6 +17,11 @@ import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { EvolutionChannelMetrics } from './evolution.channel-metrics';
+import {
+  WEBHOOK_MAX_INFLIGHT_DEFAULT,
+  WEBHOOK_SLOW_MS_DEFAULT,
+} from './evolution.constants';
 import { EvolutionClient } from './evolution.client';
 import {
   extractExternalEventId,
@@ -60,13 +67,28 @@ export type WebhookResponse = {
 
 @Injectable()
 export class WhatsappService {
+  private readonly webhookSlowMs: number;
+  private readonly webhookMaxInflight: number;
+  private webhookInflight = 0;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly evolution: EvolutionClient,
     private readonly inbound: WhatsappInboundService,
     private readonly delivery: WhatsappDeliveryService,
-  ) {}
+    private readonly channelMetrics: EvolutionChannelMetrics,
+    config: ConfigService,
+  ) {
+    this.webhookSlowMs = config.get<number>(
+      'evolution.webhookSlowMs',
+      WEBHOOK_SLOW_MS_DEFAULT,
+    );
+    this.webhookMaxInflight = config.get<number>(
+      'evolution.webhookMaxInflight',
+      WEBHOOK_MAX_INFLIGHT_DEFAULT,
+    );
+  }
 
   async connect(
     actor: CompanyActor,
@@ -174,6 +196,29 @@ export class WhatsappService {
       throw new UnauthorizedException('Missing X-Webhook-Secret');
     }
 
+    if (this.webhookInflight >= this.webhookMaxInflight) {
+      throw new ServiceUnavailableException('WEBHOOK_BACKPRESSURE');
+    }
+
+    this.webhookInflight += 1;
+    this.channelMetrics.beginWebhook();
+    const started = Date.now();
+
+    try {
+      return await this.handleWebhookInner(instanceKey, secretHeader, payload);
+    } finally {
+      const durationMs = Date.now() - started;
+      this.webhookInflight = Math.max(0, this.webhookInflight - 1);
+      this.channelMetrics.endWebhook();
+      this.channelMetrics.recordWebhook(durationMs, this.webhookSlowMs);
+    }
+  }
+
+  private async handleWebhookInner(
+    instanceKey: string,
+    secretHeader: string,
+    payload: Record<string, unknown>,
+  ): Promise<WebhookResponse> {
     const instance = await this.prisma.whatsAppInstance.findFirst({
       where: { instanceKey, deletedAt: null },
     });
@@ -429,6 +474,8 @@ export class WhatsappService {
     ) {
       return { ok: true, status: instance.status };
     }
+
+    this.channelMetrics.recordConnectionFlap();
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const next = await tx.whatsAppInstance.update({

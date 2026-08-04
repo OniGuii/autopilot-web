@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConversationStatus, WhatsAppConnectionStatus } from '@prisma/client';
 import { WhatsappSendService } from './whatsapp-send.service';
@@ -96,6 +97,7 @@ describe('WhatsappSendService', () => {
     };
 
     const evolution = {
+      assertAvailable: jest.fn(),
       sendText: opts?.sendError
         ? jest.fn().mockRejectedValue(opts.sendError)
         : jest.fn().mockResolvedValue({
@@ -124,7 +126,13 @@ describe('WhatsappSendService', () => {
 
     expect(messages[0]?.status).toBe(OUTBOUND_MESSAGE_STATUS.PENDING);
     expect(messages[0]?.metadata).toEqual(
-      expect.objectContaining({ source: 'whatsapp_send' }),
+      expect.objectContaining({
+        source: 'whatsapp_send',
+        correlationId: expect.any(String),
+      }),
+    );
+    expect(result.correlationId).toEqual(
+      (messages[0]?.metadata as { correlationId: string }).correlationId,
     );
     expect(evolution.sendText).toHaveBeenCalledWith({
       instanceName: 'aptest',
@@ -138,6 +146,7 @@ describe('WhatsappSendService', () => {
       leadId: lead.id,
       externalMessageId: 'EVO_OUT_1',
       status: OUTBOUND_MESSAGE_STATUS.SENT,
+      correlationId: expect.any(String),
     });
     expect(prisma.lead.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -246,6 +255,7 @@ describe('WhatsappSendService', () => {
         source: 'followup',
         followUpId: 'fu-1',
         attempt: 2,
+        correlationId: 'corr-1',
       },
     });
 
@@ -254,8 +264,27 @@ describe('WhatsappSendService', () => {
         source: 'followup',
         followUpId: 'fu-1',
         attempt: 2,
+        correlationId: 'corr-1',
       }),
     );
+  });
+
+  it('returns 503 without creating PENDING when circuit is open (CH5)', async () => {
+    const { service, prisma, evolution } = build();
+    (evolution.assertAvailable as jest.Mock).mockImplementation(() => {
+      throw new ServiceUnavailableException({
+        message: 'CHANNEL_UNAVAILABLE',
+      });
+    });
+
+    await expect(
+      service.send(actor, {
+        leadId: lead.id,
+        conversationId: conversation.id,
+        body: 'x',
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(prisma.message.create).not.toHaveBeenCalled();
   });
 });
 

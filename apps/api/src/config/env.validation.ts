@@ -31,6 +31,26 @@ export const envValidationSchema = Joi.object({
   EVOLUTION_API_URL: Joi.string().allow('').optional(),
   EVOLUTION_API_KEY: Joi.string().allow('').optional(),
   EVOLUTION_INSTANCE: Joi.string().allow('').optional(),
+  EVOLUTION_TIMEOUT_SEND_MS: Joi.number().integer().min(1000).default(15_000),
+  EVOLUTION_TIMEOUT_CONNECT_MS: Joi.number().integer().min(1000).default(20_000),
+  EVOLUTION_TIMEOUT_DEFAULT_MS: Joi.number().integer().min(1000).default(10_000),
+  EVOLUTION_RETRY_MAX: Joi.number().integer().min(0).default(2),
+  EVOLUTION_RETRY_BASE_MS: Joi.number().integer().min(0).default(200),
+  EVOLUTION_RETRY_MAX_DELAY_MS: Joi.number().integer().min(0).default(2_000),
+  EVOLUTION_RETRY_JITTER_MS: Joi.number().integer().min(0).default(200),
+  EVOLUTION_RATE_LIMIT_WAIT_MAX_MS: Joi.number()
+    .integer()
+    .min(0)
+    .default(5_000),
+  EVOLUTION_CONNECT_COOLDOWN_MS: Joi.number().integer().min(0).default(10_000),
+  EVOLUTION_CB_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  EVOLUTION_CB_FAILURE_THRESHOLD: Joi.number().integer().min(1).default(5),
+  EVOLUTION_CB_SUCCESS_THRESHOLD: Joi.number().integer().min(1).default(2),
+  EVOLUTION_CB_OPEN_MS: Joi.number().integer().min(1000).default(30_000),
+  EVOLUTION_CB_HALF_OPEN_MAX_CALLS: Joi.number().integer().min(1).default(1),
+  WEBHOOK_SLOW_MS: Joi.number().integer().min(100).default(2_000),
+  WEBHOOK_MAX_INFLIGHT: Joi.number().integer().min(1).default(50),
+  OPS_RECONCILE_TAKE: Joi.number().integer().min(1).default(100),
   API_PUBLIC_URL: Joi.string()
     .uri({ allowRelative: false })
     .allow('')

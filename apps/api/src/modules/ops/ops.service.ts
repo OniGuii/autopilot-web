@@ -9,10 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { EvolutionClient } from '../whatsapp/evolution.client';
 import { OUTBOUND_MESSAGE_STATUS } from '../whatsapp/outbound/message-status';
 import { ListAuditQueryDto } from './dto/list-audit.query.dto';
 import { ListWebhooksQueryDto } from './dto/list-webhooks.query.dto';
-import { OPS_STALE_MS } from './ops.constants';
+import { OPS_RECONCILE_TAKE_DEFAULT, OPS_STALE_MS } from './ops.constants';
 import { pingRedis } from './redis-ping';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
@@ -30,6 +31,12 @@ export type OpsMetrics = {
   scheduledFollowUps: number;
   overdueFollowUps: number;
   executedFollowUps: number;
+  evolutionCircuitState: string;
+  evolutionTimeoutsLast15m: number;
+  evolutionRetriesTotal: number;
+  webhookP95Ms: number | null;
+  webhookSlowLast15m: number;
+  webhookInflight: number;
 };
 
 export type OpsAlert = {
@@ -48,11 +55,19 @@ export type ReconcileResult = {
 
 @Injectable()
 export class OpsService {
+  private readonly reconcileTake: number;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
-  ) {}
+    private readonly evolution: EvolutionClient,
+  ) {
+    this.reconcileTake = config.get<number>(
+      'ops.reconcileTake',
+      OPS_RECONCILE_TAKE_DEFAULT,
+    );
+  }
 
   async getOverview(actor: CompanyActor) {
     const [metrics, alerts] = await Promise.all([
@@ -128,6 +143,8 @@ export class OpsService {
       }),
     ]);
 
+    const channel = this.evolution.getMetricsSnapshot();
+
     return {
       whatsappConnected:
         instance?.status === WhatsAppConnectionStatus.CONNECTED,
@@ -137,6 +154,12 @@ export class OpsService {
       scheduledFollowUps,
       overdueFollowUps,
       executedFollowUps,
+      evolutionCircuitState: channel.evolutionCircuitState,
+      evolutionTimeoutsLast15m: channel.evolutionTimeoutsLast15m,
+      evolutionRetriesTotal: channel.evolutionRetriesTotal,
+      webhookP95Ms: channel.webhookP95Ms,
+      webhookSlowLast15m: channel.webhookSlowLast15m,
+      webhookInflight: channel.webhookInflight,
     };
   }
 
@@ -232,6 +255,32 @@ export class OpsService {
       });
     }
 
+    if (metrics.evolutionCircuitState === 'OPEN') {
+      alerts.push({
+        code: 'EVOLUTION_CIRCUIT_OPEN',
+        severity: 'error',
+        message: 'Evolution circuit breaker is OPEN',
+      });
+    }
+
+    if (metrics.evolutionTimeoutsLast15m >= 5) {
+      alerts.push({
+        code: 'EVOLUTION_HIGH_TIMEOUT_RATE',
+        severity: 'warning',
+        message: 'High Evolution timeout rate in the last 15 minutes',
+        count: metrics.evolutionTimeoutsLast15m,
+      });
+    }
+
+    if (metrics.webhookSlowLast15m > 0) {
+      alerts.push({
+        code: 'WEBHOOK_SLOW',
+        severity: 'warning',
+        message: 'Slow webhook processing detected in the last 15 minutes',
+        count: metrics.webhookSlowLast15m,
+      });
+    }
+
     return {
       companyId,
       generatedAt: new Date().toISOString(),
@@ -241,6 +290,7 @@ export class OpsService {
 
   async getHealth(actor: CompanyActor) {
     const companyId = actor.cid;
+    const channel = this.evolution.getMetricsSnapshot();
 
     const [postgres, redis, whatsapp] = await Promise.all([
       this.checkPostgres(),
@@ -251,7 +301,11 @@ export class OpsService {
     let status: 'ok' | 'degraded' | 'error' = 'ok';
     if (postgres === 'down') {
       status = 'error';
-    } else if (redis === 'down' || whatsapp === 'down') {
+    } else if (
+      redis === 'down' ||
+      whatsapp === 'down' ||
+      channel.evolutionCircuitState === 'OPEN'
+    ) {
       status = 'degraded';
     }
 
@@ -260,6 +314,11 @@ export class OpsService {
       postgres,
       redis,
       whatsapp,
+      evolution: {
+        circuit: channel.evolutionCircuitState,
+        lastErrorAt: channel.evolutionLastErrorAt,
+        stubMode: this.evolution.isStubMode(),
+      },
       timestamp: new Date().toISOString(),
     };
   }
@@ -409,6 +468,8 @@ export class OpsService {
         createdAt: { lt: staleBefore },
       },
       select: { id: true, status: true },
+      take: this.reconcileTake,
+      orderBy: { createdAt: 'asc' },
     });
 
     const encontrados = matched.length;
@@ -483,6 +544,8 @@ export class OpsService {
         updatedAt: { lt: staleBefore },
       },
       select: { id: true, status: true, metadata: true },
+      take: this.reconcileTake,
+      orderBy: { updatedAt: 'asc' },
     });
 
     const encontrados = matched.length;

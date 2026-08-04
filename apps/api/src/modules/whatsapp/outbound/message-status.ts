@@ -1,15 +1,15 @@
 /**
- * Outbound Message.status machine (Phase 3 — P3-D2).
+ * Outbound Message.status machine (Phase 3 — P3-D2 + 6B heal).
  * INBOUND continues to use RECEIVED (Phase 2).
  *
- * Allowed transitions only:
- *   PENDING → SENT
- *   PENDING → FAILED
+ * Allowed transitions:
+ *   PENDING → SENT | FAILED
  *   SENT → DELIVERED
  *   DELIVERED → READ
+ *   FAILED → SENT  (6B CH3 — echo heal after UNCERTAIN_TIMEOUT only)
  *
  * Operational note (P3-D3): PENDING older than 5 minutes should be
- * monitored / alerted (no auto-fail in this phase).
+ * monitored; Ops reconcile can auto-fail stale PENDING.
  */
 export const OUTBOUND_MESSAGE_STATUS = {
   PENDING: 'PENDING',
@@ -32,7 +32,7 @@ const ALLOWED: Record<string, ReadonlySet<string>> = {
   [OUTBOUND_MESSAGE_STATUS.SENT]: new Set([OUTBOUND_MESSAGE_STATUS.DELIVERED]),
   [OUTBOUND_MESSAGE_STATUS.DELIVERED]: new Set([OUTBOUND_MESSAGE_STATUS.READ]),
   [OUTBOUND_MESSAGE_STATUS.READ]: new Set(),
-  [OUTBOUND_MESSAGE_STATUS.FAILED]: new Set(),
+  [OUTBOUND_MESSAGE_STATUS.FAILED]: new Set([OUTBOUND_MESSAGE_STATUS.SENT]),
 };
 
 export function canTransitionOutboundStatus(

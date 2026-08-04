@@ -2,8 +2,10 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ConversationStatus,
@@ -14,7 +16,10 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/jwt-payload';
+import { newCorrelationId } from '../correlation';
+import { EVOLUTION_ERROR_CLASS } from '../evolution.constants';
 import { EvolutionClient } from '../evolution.client';
+import { isEvolutionChannelError } from '../evolution.errors';
 import { OUTBOUND_MESSAGE_STATUS } from './message-status';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
@@ -30,6 +35,7 @@ export type SendWhatsappMetadata = {
   source: string;
   followUpId?: string;
   attempt?: number;
+  correlationId?: string;
   [key: string]: unknown;
 };
 
@@ -48,6 +54,7 @@ export type SendWhatsappResult = {
   leadId: string;
   externalMessageId: string;
   status: string;
+  correlationId: string;
 };
 
 @Injectable()
@@ -72,6 +79,11 @@ export class WhatsappSendService {
     }
   }
 
+  /** CH5/CH6 — circuit OPEN → 503 without PENDING/EXECUTING */
+  assertChannelAvailable(): void {
+    this.evolution.assertAvailable();
+  }
+
   /**
    * Authenticated outbound send.
    * Tenant = JWT.cid only. Never reads companyId from DTO/payload.
@@ -87,6 +99,9 @@ export class WhatsappSendService {
     if (!body) {
       throw new BadRequestException('body is required');
     }
+
+    // CH5 — fail-fast before PENDING
+    this.assertChannelAvailable();
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: input.leadId, companyId, deletedAt: null },
@@ -127,9 +142,16 @@ export class WhatsappSendService {
       throw new ConflictException('WhatsApp instance not CONNECTED');
     }
 
+    const correlationId =
+      (typeof input.metadata?.correlationId === 'string' &&
+      input.metadata.correlationId.trim()
+        ? input.metadata.correlationId.trim()
+        : null) ?? newCorrelationId();
+
     const source = input.metadata?.source?.trim() || 'whatsapp_send';
     const messageMetadata: Prisma.InputJsonObject = {
       source,
+      correlationId,
       whatsappInstanceId: instance.id,
       evolutionInstanceName: instance.evolutionInstanceName,
       ...(input.metadata?.followUpId
@@ -165,10 +187,11 @@ export class WhatsappSendService {
       });
       externalMessageId = sent.externalMessageId;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message.slice(0, 1000)
-          : 'Evolution send failed';
+      const { errorMessage, httpException } = this.mapSendFailure(
+        error,
+        pending.id,
+        correlationId,
+      );
 
       await this.prisma.$transaction(async (tx) => {
         await tx.message.update({
@@ -185,22 +208,21 @@ export class WhatsappSendService {
           action: 'WHATSAPP_MESSAGE_FAILED',
           targetType: 'MESSAGE',
           targetId: pending.id,
-          before: { status: OUTBOUND_MESSAGE_STATUS.PENDING },
+          before: {
+            status: OUTBOUND_MESSAGE_STATUS.PENDING,
+            correlationId,
+          },
           after: {
             status: OUTBOUND_MESSAGE_STATUS.FAILED,
             errorMessage,
+            correlationId,
           },
           ip: meta?.ip,
           userAgent: meta?.userAgent,
         });
       });
 
-      throw new BadGatewayException({
-        message: 'WhatsApp send failed',
-        messageId: pending.id,
-        status: OUTBOUND_MESSAGE_STATUS.FAILED,
-        error: errorMessage,
-      });
+      throw httpException;
     }
 
     const now = new Date();
@@ -235,7 +257,10 @@ export class WhatsappSendService {
         action: 'WHATSAPP_MESSAGE_SENT',
         targetType: 'MESSAGE',
         targetId: pending.id,
-        before: { status: OUTBOUND_MESSAGE_STATUS.PENDING },
+        before: {
+          status: OUTBOUND_MESSAGE_STATUS.PENDING,
+          correlationId,
+        },
         after: {
           id: pending.id,
           conversationId: conversation.id,
@@ -245,6 +270,7 @@ export class WhatsappSendService {
           externalMessageId,
           body: body.slice(0, AUDIT_BODY_MAX),
           source,
+          correlationId,
         },
         ip: meta?.ip,
         userAgent: meta?.userAgent,
@@ -258,6 +284,81 @@ export class WhatsappSendService {
       leadId: lead.id,
       externalMessageId,
       status: OUTBOUND_MESSAGE_STATUS.SENT,
+      correlationId,
+    };
+  }
+
+  private mapSendFailure(
+    error: unknown,
+    messageId: string,
+    correlationId: string,
+  ): { errorMessage: string; httpException: HttpException } {
+    if (error instanceof ServiceUnavailableException) {
+      return {
+        errorMessage: EVOLUTION_ERROR_CLASS.CIRCUIT_OPEN,
+        httpException: error,
+      };
+    }
+
+    if (isEvolutionChannelError(error)) {
+      const errorMessage = error.toPublicMessage();
+      if (error.errorClass === EVOLUTION_ERROR_CLASS.RATE_LIMIT) {
+        return {
+          errorMessage,
+          httpException: new HttpException(
+            {
+              message: 'WhatsApp rate limited',
+              messageId,
+              status: OUTBOUND_MESSAGE_STATUS.FAILED,
+              error: errorMessage,
+              errorClass: error.errorClass,
+              correlationId,
+            },
+            429,
+          ),
+        };
+      }
+      if (error.errorClass === EVOLUTION_ERROR_CLASS.CIRCUIT_OPEN) {
+        return {
+          errorMessage,
+          httpException: new ServiceUnavailableException({
+            message: 'CHANNEL_UNAVAILABLE',
+            messageId,
+            status: OUTBOUND_MESSAGE_STATUS.FAILED,
+            error: errorMessage,
+            errorClass: error.errorClass,
+            correlationId,
+          }),
+        };
+      }
+      return {
+        errorMessage,
+        httpException: new BadGatewayException({
+          message: 'WhatsApp send failed',
+          messageId,
+          status: OUTBOUND_MESSAGE_STATUS.FAILED,
+          error: errorMessage,
+          errorClass: error.errorClass,
+          correlationId,
+        }),
+      };
+    }
+
+    const errorMessage =
+      error instanceof Error
+        ? error.message.slice(0, 1000)
+        : 'Evolution send failed';
+
+    return {
+      errorMessage,
+      httpException: new BadGatewayException({
+        message: 'WhatsApp send failed',
+        messageId,
+        status: OUTBOUND_MESSAGE_STATUS.FAILED,
+        error: errorMessage,
+        errorClass: EVOLUTION_ERROR_CLASS.UNKNOWN,
+        correlationId,
+      }),
     };
   }
 }

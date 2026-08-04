@@ -30,6 +30,59 @@ export default () => {
       apiUrl: process.env.EVOLUTION_API_URL,
       apiKey: process.env.EVOLUTION_API_KEY,
       instance: process.env.EVOLUTION_INSTANCE,
+      timeoutSendMs: parseInt(
+        process.env.EVOLUTION_TIMEOUT_SEND_MS ?? '15000',
+        10,
+      ),
+      timeoutConnectMs: parseInt(
+        process.env.EVOLUTION_TIMEOUT_CONNECT_MS ?? '20000',
+        10,
+      ),
+      timeoutDefaultMs: parseInt(
+        process.env.EVOLUTION_TIMEOUT_DEFAULT_MS ?? '10000',
+        10,
+      ),
+      retryMax: parseInt(process.env.EVOLUTION_RETRY_MAX ?? '2', 10),
+      retryBaseMs: parseInt(process.env.EVOLUTION_RETRY_BASE_MS ?? '200', 10),
+      retryMaxDelayMs: parseInt(
+        process.env.EVOLUTION_RETRY_MAX_DELAY_MS ?? '2000',
+        10,
+      ),
+      retryJitterMs: parseInt(
+        process.env.EVOLUTION_RETRY_JITTER_MS ?? '200',
+        10,
+      ),
+      rateLimitWaitMaxMs: parseInt(
+        process.env.EVOLUTION_RATE_LIMIT_WAIT_MAX_MS ?? '5000',
+        10,
+      ),
+      connectCooldownMs: parseInt(
+        process.env.EVOLUTION_CONNECT_COOLDOWN_MS ?? '10000',
+        10,
+      ),
+      circuitBreakerEnabled:
+        (process.env.EVOLUTION_CB_ENABLED ?? 'true') === 'true',
+      cbFailureThreshold: parseInt(
+        process.env.EVOLUTION_CB_FAILURE_THRESHOLD ?? '5',
+        10,
+      ),
+      cbSuccessThreshold: parseInt(
+        process.env.EVOLUTION_CB_SUCCESS_THRESHOLD ?? '2',
+        10,
+      ),
+      cbOpenMs: parseInt(process.env.EVOLUTION_CB_OPEN_MS ?? '30000', 10),
+      cbHalfOpenMaxCalls: parseInt(
+        process.env.EVOLUTION_CB_HALF_OPEN_MAX_CALLS ?? '1',
+        10,
+      ),
+      webhookSlowMs: parseInt(process.env.WEBHOOK_SLOW_MS ?? '2000', 10),
+      webhookMaxInflight: parseInt(
+        process.env.WEBHOOK_MAX_INFLIGHT ?? '50',
+        10,
+      ),
+    },
+    ops: {
+      reconcileTake: parseInt(process.env.OPS_RECONCILE_TAKE ?? '100', 10),
     },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {
