@@ -49,11 +49,9 @@ describe('LeadActivitiesService', () => {
           };
           return { ...stored };
         }),
-        findFirst: jest
-          .fn()
-          .mockImplementation(async () =>
-            stored.deletedAt ? null : { ...stored },
-          ),
+        findFirst: jest.fn().mockImplementation(async () =>
+          stored.deletedAt ? null : { ...stored },
+        ),
         findMany: jest.fn().mockResolvedValue([stored]),
         update: jest.fn().mockImplementation(async ({ data }) => {
           const next = { ...stored };
@@ -64,7 +62,7 @@ describe('LeadActivitiesService', () => {
             user: undefined,
             updatedAt: new Date(),
           });
-          stored = next;
+          stored = next as typeof stored;
           return { ...stored };
         }),
       },
@@ -121,9 +119,9 @@ describe('LeadActivitiesService', () => {
     await expect(
       service.update(actor, leadId, 'act-1', { title: 'x' }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      service.complete(actor, leadId, 'act-1'),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.complete(actor, leadId, 'act-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('rejects invalid status transition PLANNED→PLANNED via update status same is ok path', async () => {

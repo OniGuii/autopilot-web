@@ -1,4 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthRevocationService } from '../auth/auth-revocation.service';
 import {
@@ -81,7 +84,11 @@ export class UsersService {
   /**
    * D2 disable equivalent: revoke membership in current company only.
    */
-  async revokeAccess(actor: CompanyActor, userId: string, meta?: RequestMeta) {
+  async revokeAccess(
+    actor: CompanyActor,
+    userId: string,
+    meta?: RequestMeta,
+  ) {
     const membership = await this.requireCompanyMembership(actor.cid, userId, {
       includeRevoked: false,
     });

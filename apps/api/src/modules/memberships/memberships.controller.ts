@@ -80,8 +80,7 @@ export class MembershipsController {
   @HttpCode(HttpStatus.OK)
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
   @ApiOperation({
-    summary:
-      'Revoke membership in current company (D2 — not global user disable)',
+    summary: 'Revoke membership in current company (D2 — not global user disable)',
   })
   revoke(
     @CurrentUser() user: AuthenticatedUser,

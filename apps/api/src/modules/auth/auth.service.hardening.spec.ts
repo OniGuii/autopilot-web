@@ -69,7 +69,9 @@ describe('AuthService hardening (6A)', () => {
 
     const prisma = {
       session: {
-        findMany: jest.fn().mockResolvedValue(opts?.activeSessions ?? []),
+        findMany: jest
+          .fn()
+          .mockResolvedValue(opts?.activeSessions ?? []),
         create: jest.fn().mockResolvedValue({
           id: sessionId,
           userId,
@@ -123,10 +125,7 @@ describe('AuthService hardening (6A)', () => {
 
     expect(prisma.session.findMany).toHaveBeenCalled();
     // 5 active + new login → revoke 1 oldest
-    expect(revocation.revokeSession).toHaveBeenCalledWith(
-      's-0',
-      'MAX_SESSIONS',
-    );
+    expect(revocation.revokeSession).toHaveBeenCalledWith('s-0', 'MAX_SESSIONS');
   });
 
   it('refresh reuse of rotated token revokes session', async () => {
@@ -152,9 +151,9 @@ describe('AuthService hardening (6A)', () => {
       },
     });
 
-    await expect(service.refresh(`${tokenId}.secret`)).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.refresh(`${tokenId}.secret`),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(revocation.revokeSession).toHaveBeenCalledWith(
       sessionId,
       'REFRESH_REUSE',
@@ -179,12 +178,12 @@ describe('AuthService hardening (6A)', () => {
     const { service, accessPrincipal } = buildAuth();
     const tokens = await service.refresh(`${tokenId}.secret`);
     expect(tokens.accessToken).toBe('access.jwt');
-    expect(
-      accessPrincipal.assertActiveMembershipForRefresh,
-    ).toHaveBeenCalledWith({
-      userId,
-      membershipId: 'mem-1',
-      companyId: 'company-1',
-    });
+    expect(accessPrincipal.assertActiveMembershipForRefresh).toHaveBeenCalledWith(
+      {
+        userId,
+        membershipId: 'mem-1',
+        companyId: 'company-1',
+      },
+    );
   });
 });

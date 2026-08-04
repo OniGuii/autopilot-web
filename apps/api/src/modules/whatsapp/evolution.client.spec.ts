@@ -125,7 +125,7 @@ describe('EvolutionClient channel hardening (6B)', () => {
       status: 503,
       text: async () => 'down',
       headers: { get: () => null },
-    });
+    }) as unknown as typeof fetch;
 
     const client = buildLive();
     await expect(
@@ -154,7 +154,7 @@ describe('EvolutionClient channel hardening (6B)', () => {
       text: async () => 'err',
       headers: { get: () => null },
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     const client = buildLive();
     await expect(

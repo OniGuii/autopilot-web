@@ -1,6 +1,10 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CompanyStatus, MembershipRole, UserStatus } from '@prisma/client';
+import {
+  CompanyStatus,
+  MembershipRole,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../shared/redis/redis.service';
 import {
@@ -39,9 +43,7 @@ export class AccessPrincipalService {
     );
   }
 
-  async resolveFromAccessToken(
-    payload: JwtPayload,
-  ): Promise<AuthenticatedUser> {
+  async resolveFromAccessToken(payload: JwtPayload): Promise<AuthenticatedUser> {
     if (!payload?.sub || !payload?.sid) {
       throw new UnauthorizedException('Invalid token payload');
     }
@@ -203,11 +205,7 @@ export class AccessPrincipalService {
     userId: string;
     membershipId: string;
     companyId: string;
-  }): Promise<{
-    role: MembershipRole;
-    companyId: string;
-    membershipId: string;
-  }> {
+  }): Promise<{ role: MembershipRole; companyId: string; membershipId: string }> {
     const access = await this.resolveMembershipAccess(
       input.userId,
       input.membershipId,

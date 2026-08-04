@@ -113,10 +113,7 @@ export class DashboardService {
     };
   }
 
-  async getLeads(
-    actor: CompanyActor,
-    query: DashboardQueryDto,
-  ): Promise<LeadsKpis> {
+  async getLeads(actor: CompanyActor, query: DashboardQueryDto): Promise<LeadsKpis> {
     const companyId = actor.cid;
     const createdAt = this.createdAtFilter(query);
 
@@ -281,4 +278,5 @@ export class DashboardService {
     if (denominator <= 0) return 0;
     return Math.round((numerator / denominator) * 10000) / 10000;
   }
+
 }

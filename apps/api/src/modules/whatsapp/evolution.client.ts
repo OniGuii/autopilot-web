@@ -125,10 +125,7 @@ export class EvolutionClient {
       'evolution.connectCooldownMs',
       EVOLUTION_CONNECT_COOLDOWN_MS_DEFAULT,
     );
-    this.cbEnabled = config.get<boolean>(
-      'evolution.circuitBreakerEnabled',
-      true,
-    );
+    this.cbEnabled = config.get<boolean>('evolution.circuitBreakerEnabled', true);
 
     this.circuit = new EvolutionCircuitBreaker({
       failureThreshold: config.get<number>(
@@ -238,16 +235,11 @@ export class EvolutionClient {
       this.assertStubAllowed();
       return;
     }
-    await this.request(
-      'DELETE',
-      `/instance/logout/${instanceName}`,
-      undefined,
-      {
-        operation: 'logout',
-        timeoutMs: this.timeoutDefaultMs,
-        retryable: false,
-      },
-    );
+    await this.request('DELETE', `/instance/logout/${instanceName}`, undefined, {
+      operation: 'logout',
+      timeoutMs: this.timeoutDefaultMs,
+      retryable: false,
+    });
   }
 
   /**
@@ -464,11 +456,7 @@ export class EvolutionClient {
   ): Promise<T> {
     if (this.cbEnabled && !this.circuit.allowRequest()) {
       this.metrics.setCircuitState(this.circuit.getState());
-      this.metrics.recordRequest(
-        'circuit_open',
-        0,
-        EVOLUTION_ERROR_CLASS.CIRCUIT_OPEN,
-      );
+      this.metrics.recordRequest('circuit_open', 0, EVOLUTION_ERROR_CLASS.CIRCUIT_OPEN);
       throw EvolutionChannelError.circuitOpen(opts.operation);
     }
 
@@ -494,11 +482,10 @@ export class EvolutionClient {
         const text = await response.text();
         const errorClass = classifyHttpStatus(response.status);
         const err = new EvolutionChannelError({
-          message:
-            `Evolution ${method} ${path} → ${response.status}: ${text}`.slice(
-              0,
-              500,
-            ),
+          message: `Evolution ${method} ${path} → ${response.status}: ${text}`.slice(
+            0,
+            500,
+          ),
           errorClass,
           operation: opts.operation,
           statusCode: response.status,

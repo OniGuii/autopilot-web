@@ -13,14 +13,10 @@ import { AuthenticatedUser, hasCompanyContext } from '../types/jwt-payload';
 @Injectable()
 export class CompanyContextGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context
-      .switchToHttp()
-      .getRequest<{ user?: AuthenticatedUser }>();
+    const request = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>();
     const user = request.user;
     if (!user || !hasCompanyContext(user)) {
-      throw new ForbiddenException(
-        'Company context required. Call POST /auth/select-company.',
-      );
+      throw new ForbiddenException('Company context required. Call POST /auth/select-company.');
     }
     return true;
   }

@@ -1,7 +1,4 @@
-import {
-  OUTBOUND_MESSAGE_STATUS,
-  type OutboundMessageStatus,
-} from './message-status';
+import { OUTBOUND_MESSAGE_STATUS, type OutboundMessageStatus } from './message-status';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -13,7 +10,8 @@ export type ParsedDeliveryUpdate = {
 };
 
 export type ParseDeliveryResult =
-  { ok: true; update: ParsedDeliveryUpdate } | { ok: false; reason: string };
+  | { ok: true; update: ParsedDeliveryUpdate }
+  | { ok: false; reason: string };
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -36,7 +34,8 @@ function extractExternalId(node: UnknownRecord): string | null {
     node.keyId,
     node.messageId,
     node.id,
-    asRecord(node.message)?.key && asRecord(asRecord(node.message)!.key)?.id,
+    asRecord(node.message)?.key &&
+      asRecord(asRecord(node.message)!.key)?.id,
   ];
   for (const c of candidates) {
     if (typeof c === 'string' && c.trim()) {

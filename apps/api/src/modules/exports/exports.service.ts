@@ -1,4 +1,8 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import {
   FollowUpStatus,
   LeadActivityStatus,
@@ -314,7 +318,8 @@ export class ExportsService {
 
   private escapeCsv(value: string | number | Date | null | undefined): string {
     if (value === null || value === undefined) return '';
-    const raw = value instanceof Date ? value.toISOString() : String(value);
+    const raw =
+      value instanceof Date ? value.toISOString() : String(value);
     if (/[",\n\r]/.test(raw)) {
       return `"${raw.replace(/"/g, '""')}"`;
     }

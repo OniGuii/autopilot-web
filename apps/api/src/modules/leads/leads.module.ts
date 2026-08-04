@@ -11,7 +11,11 @@ import { LeadsService } from './leads.service';
 
 @Module({
   imports: [AuthModule, AuditModule],
-  controllers: [LeadsController, LeadNotesController, LeadActivitiesController],
+  controllers: [
+    LeadsController,
+    LeadNotesController,
+    LeadActivitiesController,
+  ],
   providers: [
     LeadsService,
     LeadNotesService,

@@ -59,11 +59,7 @@ export class LeadsService {
     const companyId = actor.cid;
     const phone = normalizePhone(dto.phone);
     const ownerId =
-      dto.ownerId === undefined
-        ? null
-        : dto.ownerId === null
-          ? null
-          : dto.ownerId;
+      dto.ownerId === undefined ? null : dto.ownerId === null ? null : dto.ownerId;
 
     if (ownerId) {
       await this.assertActiveMember(companyId, ownerId);
@@ -116,9 +112,7 @@ export class LeadsService {
 
   async list(actor: CompanyActor, query: ListLeadsQueryDto) {
     if (query.unassigned === true && query.ownerId) {
-      throw new BadRequestException(
-        'Cannot combine unassigned=true with ownerId',
-      );
+      throw new BadRequestException('Cannot combine unassigned=true with ownerId');
     }
 
     const page = query.page ?? 1;
@@ -419,10 +413,7 @@ export class LeadsService {
     return where;
   }
 
-  private async findActiveInCompany(
-    companyId: string,
-    id: string,
-  ): Promise<Lead> {
+  private async findActiveInCompany(companyId: string, id: string): Promise<Lead> {
     const lead = await this.prisma.lead.findFirst({
       where: { id, companyId, deletedAt: null },
     });
@@ -443,9 +434,7 @@ export class LeadsService {
       select: { id: true },
     });
     if (!membership) {
-      throw new BadRequestException(
-        'ownerId must be an active member of this company',
-      );
+      throw new BadRequestException('ownerId must be an active member of this company');
     }
   }
 

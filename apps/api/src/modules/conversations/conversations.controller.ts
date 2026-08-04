@@ -37,9 +37,7 @@ export class ConversationsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Create conversation for a lead in current company',
-  })
+  @ApiOperation({ summary: 'Create conversation for a lead in current company' })
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateConversationDto,
@@ -81,15 +79,10 @@ export class ConversationsController {
     @Body() dto: UpdateConversationDto,
     @Req() req: Request,
   ) {
-    return this.conversationsService.update(
-      this.asCompanyActor(user),
-      id,
-      dto,
-      {
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-      },
-    );
+    return this.conversationsService.update(this.asCompanyActor(user), id, dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post(':id/close')

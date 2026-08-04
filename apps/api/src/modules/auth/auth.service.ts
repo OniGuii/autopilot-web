@@ -5,7 +5,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { CompanyStatus, MembershipRole, UserStatus } from '@prisma/client';
+import {
+  CompanyStatus,
+  MembershipRole,
+  UserStatus,
+} from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -291,12 +295,13 @@ export class AuthService {
     let role: MembershipRole | null = session.membership?.role ?? null;
 
     if (membershipId && companyId) {
-      const active =
-        await this.accessPrincipal.assertActiveMembershipForRefresh({
+      const active = await this.accessPrincipal.assertActiveMembershipForRefresh(
+        {
           userId: session.userId,
           membershipId,
           companyId,
-        });
+        },
+      );
       membershipId = active.membershipId;
       companyId = active.companyId;
       role = active.role;
@@ -418,13 +423,7 @@ export class AuthService {
           where: { status: 'ACTIVE', deletedAt: null },
           include: {
             company: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                status: true,
-                deletedAt: true,
-              },
+              select: { id: true, name: true, slug: true, status: true, deletedAt: true },
             },
           },
           orderBy: { createdAt: 'asc' },

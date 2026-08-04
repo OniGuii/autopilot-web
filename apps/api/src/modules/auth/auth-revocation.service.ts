@@ -102,15 +102,12 @@ export class AuthRevocationService {
     return { revokedSessions: result.count };
   }
 
-  async logoutAllDevices(
-    userId: string,
-    meta?: {
-      actorUserId?: string;
-      companyId?: string | null;
-      ip?: string;
-      userAgent?: string;
-    },
-  ): Promise<{ revokedSessions: number }> {
+  async logoutAllDevices(userId: string, meta?: {
+    actorUserId?: string;
+    companyId?: string | null;
+    ip?: string;
+    userAgent?: string;
+  }): Promise<{ revokedSessions: number }> {
     const now = new Date();
     const [sessions, tokens] = await this.prisma.$transaction([
       this.prisma.session.updateMany({
@@ -153,7 +150,10 @@ export class AuthRevocationService {
     return { revokedSessions: sessions.count };
   }
 
-  async revokeSession(sessionId: string, reason: string): Promise<void> {
+  async revokeSession(
+    sessionId: string,
+    reason: string,
+  ): Promise<void> {
     const now = new Date();
     const session = await this.prisma.session.findFirst({
       where: { id: sessionId, deletedAt: null },

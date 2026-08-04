@@ -23,10 +23,7 @@ export class CreateLeadDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   name!: string;
 
-  @ApiProperty({
-    example: '+55 (11) 99999-0001',
-    description: 'Normalized to digits only',
-  })
+  @ApiProperty({ example: '+55 (11) 99999-0001', description: 'Normalized to digits only' })
   @IsString()
   @MinLength(8)
   @MaxLength(32)

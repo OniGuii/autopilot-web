@@ -48,9 +48,7 @@ describe('OpsController permissions', () => {
       }),
     };
     // Ensure metadata is read from handler
-    jest
-      .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue(rolesFor(handler));
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(rolesFor(handler));
     return guard.canActivate(ctx as never);
   }
 
