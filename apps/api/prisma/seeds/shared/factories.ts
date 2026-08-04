@@ -1,6 +1,8 @@
 import {
   Channel,
   ConversationStatus,
+  LeadActivityStatus,
+  LeadActivityType,
   LeadStatus,
   MembershipRole,
   MessageDirection,
@@ -8,7 +10,9 @@ import {
   PrismaClient,
   UserStatus,
   FollowUpStatus,
+  WhatsAppConnectionStatus,
 } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
 import { LEAD_STATUSES, SEED_MARKER, SEED_PASSWORD } from './constants';
 
@@ -456,6 +460,164 @@ export async function ensureSeedAuditLog(
   });
 }
 
+/** Idempotent CRM note for pilot seed. */
+export async function ensureLeadNote(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    leadId: string;
+    userId: string;
+    body: string;
+    profile: string;
+    key: string;
+  },
+) {
+  const marker = `[SEED:${input.key}]`;
+  const existing = await prisma.leadNote.findFirst({
+    where: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      deletedAt: null,
+      body: { contains: marker },
+    },
+  });
+  if (existing) return existing;
+  return prisma.leadNote.create({
+    data: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      userId: input.userId,
+      body: `${marker} ${input.body}`,
+    },
+  });
+}
+
+/** Idempotent CRM activity for pilot seed. */
+export async function ensureLeadActivity(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    leadId: string;
+    userId: string;
+    type?: LeadActivityType;
+    status?: LeadActivityStatus;
+    title: string;
+    profile: string;
+    key: string;
+  },
+) {
+  const marker = `[SEED:${input.key}]`;
+  const existing = await prisma.leadActivity.findFirst({
+    where: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      deletedAt: null,
+      title: { contains: marker },
+    },
+  });
+  if (existing) return existing;
+  return prisma.leadActivity.create({
+    data: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      userId: input.userId,
+      type: input.type ?? LeadActivityType.CALL,
+      status: input.status ?? LeadActivityStatus.PLANNED,
+      title: `${marker} ${input.title}`,
+      body: `Seed activity (${input.profile})`,
+      scheduledAt: new Date(),
+    },
+  });
+}
+
+/** AI suggestion follow-up (SUGGESTED / AI_REPLY) for pilot demo. */
+export async function ensureAiSuggestionFollowUp(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    leadId: string;
+    conversationId: string;
+    assignedUserId?: string;
+    profile: string;
+    key: string;
+  },
+) {
+  const seedKey = `${input.key}-AI`;
+  const marker = `[SEED:${seedKey}]`;
+  const existing = await prisma.followUp.findFirst({
+    where: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      deletedAt: null,
+      suggestedBody: { contains: marker },
+    },
+  });
+  if (existing) return existing;
+  return prisma.followUp.create({
+    data: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      conversationId: input.conversationId,
+      assignedUserId: input.assignedUserId,
+      channel: Channel.WHATSAPP,
+      status: FollowUpStatus.SUGGESTED,
+      type: 'AI_REPLY',
+      suggestedBody: `${marker} Sugestão de IA: posso te ajudar a agendar uma visita?`,
+      metadata: {
+        ...meta(input.profile, seedKey),
+        source: 'ai',
+      } as unknown as Prisma.InputJsonValue,
+    },
+  });
+}
+
+/** CONNECTED WhatsApp instance with known webhook secret (pilot/local smoke only). */
+export async function ensureWhatsAppInstance(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    instanceKey: string;
+    webhookSecretPlain: string;
+    phoneNumber: string;
+    evolutionInstanceName: string;
+  },
+) {
+  const webhookSecretHash = await argon2.hash(input.webhookSecretPlain);
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'on', true)`;
+    const existing = await tx.whatsAppInstance.findFirst({
+      where: { companyId: input.companyId, deletedAt: null },
+    });
+    if (existing) {
+      return tx.whatsAppInstance.update({
+        where: { id: existing.id },
+        data: {
+          instanceKey: input.instanceKey,
+          evolutionInstanceName: input.evolutionInstanceName,
+          status: WhatsAppConnectionStatus.CONNECTED,
+          phoneNumber: input.phoneNumber,
+          webhookSecretHash,
+          connectedAt: existing.connectedAt ?? new Date(),
+          deletedAt: null,
+          lastError: null,
+        },
+      });
+    }
+    return tx.whatsAppInstance.create({
+      data: {
+        id: randomUUID(),
+        companyId: input.companyId,
+        instanceKey: input.instanceKey,
+        evolutionInstanceName: input.evolutionInstanceName,
+        status: WhatsAppConnectionStatus.CONNECTED,
+        phoneNumber: input.phoneNumber,
+        webhookSecretHash,
+        connectedAt: new Date(),
+      },
+    });
+  });
+}
+
 export type SeedCounts = {
   companies: number;
   users: number;
@@ -466,59 +628,79 @@ export type SeedCounts = {
   followUps: number;
   events: number;
   auditLogs: number;
+  leadNotes?: number;
+  leadActivities?: number;
 };
 
 export async function countCompanyTree(
   prisma: PrismaClient,
   companyIds: string[],
 ): Promise<SeedCounts> {
-  const [
-    companies,
-    memberships,
-    leads,
-    conversations,
-    messages,
-    followUps,
-    events,
-    auditLogs,
-  ] = await Promise.all([
-    prisma.company.count({ where: { id: { in: companyIds }, deletedAt: null } }),
-    prisma.membership.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-    prisma.lead.count({ where: { companyId: { in: companyIds }, deletedAt: null } }),
-    prisma.conversation.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-    prisma.message.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-    prisma.followUp.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-    prisma.event.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-    prisma.auditLog.count({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-    }),
-  ]);
+  // Single interactive TX so SET LOCAL rls_bypass applies to all counts (pool-safe).
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'on', true)`;
+    await tx.$executeRaw`SELECT set_config('app.company_id', '', true)`;
 
-  const userIds = await prisma.membership.findMany({
-    where: { companyId: { in: companyIds }, deletedAt: null },
-    select: { userId: true },
-    distinct: ['userId'],
+    const [
+      companies,
+      memberships,
+      leads,
+      conversations,
+      messages,
+      followUps,
+      events,
+      auditLogs,
+      leadNotes,
+      leadActivities,
+    ] = await Promise.all([
+      tx.company.count({ where: { id: { in: companyIds }, deletedAt: null } }),
+      tx.membership.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.lead.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.conversation.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.message.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.followUp.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.event.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.auditLog.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.leadNote.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+      tx.leadActivity.count({
+        where: { companyId: { in: companyIds }, deletedAt: null },
+      }),
+    ]);
+
+    const userIds = await tx.membership.findMany({
+      where: { companyId: { in: companyIds }, deletedAt: null },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
+    return {
+      companies,
+      users: userIds.length,
+      memberships,
+      leads,
+      conversations,
+      messages,
+      followUps,
+      events,
+      auditLogs,
+      leadNotes,
+      leadActivities,
+    };
   });
-
-  return {
-    companies,
-    users: userIds.length,
-    memberships,
-    leads,
-    conversations,
-    messages,
-    followUps,
-    events,
-    auditLogs,
-  };
 }

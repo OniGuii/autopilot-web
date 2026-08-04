@@ -26,6 +26,8 @@
     "seed:local": "SEED_PROFILE=local ts-node --transpile-only prisma/seed.ts",
     "seed:demo": "SEED_PROFILE=demo ts-node --transpile-only prisma/seed.ts",
     "seed:test": "SEED_PROFILE=test ts-node --transpile-only prisma/seed.ts",
+    "seed:pilot": "SEED_PROFILE=pilot ts-node --transpile-only prisma/seed.ts",
+    "perf:baseline": "ASYNC_WORKERS_IN_API=false ASYNC_AI_ENABLED=false ASYNC_INBOUND_ENABLED=false NODE_ENV=test ts-node --transpile-only scripts/perf-baseline.ts",
     "db:start": "bash scripts/db-start.sh",
     "db:stop": "bash scripts/db-stop.sh",
     "db:reset": "prisma migrate reset --force --skip-seed",
