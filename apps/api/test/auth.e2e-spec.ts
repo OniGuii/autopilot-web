@@ -80,4 +80,62 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${login.accessToken}`)
       .expect(403);
   });
+
+  it('logout-all revokes current session access', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: E2E_OWNER_EMAIL, password: E2E_PASSWORD })
+      .expect(200);
+
+    const login = loginRes.body as LoginBody;
+
+    const selectRes = await request(app.getHttpServer())
+      .post('/api/auth/select-company')
+      .set('Authorization', `Bearer ${login.accessToken}`)
+      .send({ companySlug: E2E_COMPANY_SLUG })
+      .expect(200);
+
+    const selected = selectRes.body as SelectBody & { refreshToken?: string };
+
+    const logoutAllRes = await request(app.getHttpServer())
+      .post('/api/auth/logout-all')
+      .set('Authorization', `Bearer ${selected.accessToken}`)
+      .expect(200);
+
+    expect(logoutAllRes.body).toMatchObject({ ok: true });
+    expect(logoutAllRes.body.revokedSessions).toBeGreaterThanOrEqual(1);
+
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${selected.accessToken}`)
+      .expect(401);
+  });
+
+  it('refresh rotates and rejects reuse of previous refresh token', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: E2E_OWNER_EMAIL, password: E2E_PASSWORD })
+      .expect(200);
+
+    const login = loginRes.body as LoginBody;
+
+    const refreshRes = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: login.refreshToken })
+      .expect(200);
+
+    expect(refreshRes.body.accessToken).toBeTruthy();
+    expect(refreshRes.body.refreshToken).toBeTruthy();
+
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: login.refreshToken })
+      .expect(401);
+
+    // Original access should also fail after reuse revoked the session.
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${refreshRes.body.accessToken}`)
+      .expect(401);
+  });
 });

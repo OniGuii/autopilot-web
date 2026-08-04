@@ -93,6 +93,72 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Soft-fail get — returns null on Redis errors. */
+  async get(key: string): Promise<string | null> {
+    try {
+      await this.ensureConnected();
+      return await this.client.get(key);
+    } catch (err) {
+      this.logger.warn(
+        `redis get failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
+  /** Soft-fail set with TTL seconds. */
+  async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+    try {
+      await this.ensureConnected();
+      await this.client.set(key, value, 'EX', ttlSeconds);
+    } catch (err) {
+      this.logger.warn(
+        `redis set failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Soft-fail delete. */
+  async del(...keys: string[]): Promise<void> {
+    if (keys.length === 0) return;
+    try {
+      await this.ensureConnected();
+      await this.client.del(...keys);
+    } catch (err) {
+      this.logger.warn(
+        `redis del failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Soft-fail SCAN + DEL for prefix patterns (e.g. autopilot:auth:access:userId:*). */
+  async deleteByPattern(pattern: string): Promise<number> {
+    try {
+      await this.ensureConnected();
+      let cursor = '0';
+      let removed = 0;
+      do {
+        const [next, keys] = await this.client.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100,
+        );
+        cursor = next;
+        if (keys.length > 0) {
+          removed += await this.client.del(...keys);
+        }
+      } while (cursor !== '0');
+      return removed;
+    } catch (err) {
+      this.logger.warn(
+        `redis deleteByPattern failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return 0;
+    }
+  }
+
   private async ensureConnected(): Promise<void> {
     if (this.client.status === 'ready') return;
     if (

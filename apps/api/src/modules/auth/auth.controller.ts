@@ -71,6 +71,20 @@ export class AuthController {
     return this.authService.logout(dto.refreshToken);
   }
 
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Revoke all sessions and refresh tokens for the current user',
+  })
+  logoutAll(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
+    return this.authService.logoutAll(user, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
