@@ -92,6 +92,20 @@ enum WebhookEventStatus {
   DUPLICATE
 }
 
+enum LeadActivityType {
+  CALL
+  MEETING
+  EMAIL
+  VISIT
+  OTHER
+}
+
+enum LeadActivityStatus {
+  PLANNED
+  DONE
+  CANCELLED
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -107,17 +121,20 @@ model Company {
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
-  memberships   Membership[]
-  leads         Lead[]
-  conversations Conversation[]
-  messages      Message[]
-  followUps     FollowUp[]
-  events        Event[]
-  auditLogs     AuditLog[]
-  sessions      Session[]
-  refreshTokens RefreshToken[]
-  whatsappInstances WhatsAppInstance[]
-  webhookEvents     WebhookEvent[]
+  memberships           Membership[]
+  leads                 Lead[]
+  conversations         Conversation[]
+  messages              Message[]
+  followUps             FollowUp[]
+  events                Event[]
+  auditLogs             AuditLog[]
+  sessions              Session[]
+  refreshTokens         RefreshToken[]
+  whatsappInstances     WhatsAppInstance[]
+  webhookEvents         WebhookEvent[]
+  leadNotes             LeadNote[]
+  leadActivities        LeadActivity[]
+  leadStatusTransitions LeadStatusTransition[]
 
   @@index([status])
   @@index([slug])
@@ -135,17 +152,20 @@ model User {
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  memberships           Membership[]   @relation("MembershipUser")
-  membershipsInvited    Membership[]   @relation("MembershipInvitedBy")
-  ownedLeads            Lead[]         @relation("LeadOwner")
-  assignedConversations Conversation[] @relation("ConversationAssignee")
-  sentMessages          Message[]      @relation("MessageSender")
-  assignedFollowUps     FollowUp[]     @relation("FollowUpAssignee")
-  approvedFollowUps     FollowUp[]     @relation("FollowUpApprover")
-  events                Event[]        @relation("EventActor")
-  auditLogs             AuditLog[]     @relation("AuditActor")
-  sessions              Session[]
-  refreshTokens         RefreshToken[]
+  memberships                  Membership[]           @relation("MembershipUser")
+  membershipsInvited           Membership[]           @relation("MembershipInvitedBy")
+  ownedLeads                   Lead[]                 @relation("LeadOwner")
+  assignedConversations        Conversation[]         @relation("ConversationAssignee")
+  sentMessages                 Message[]              @relation("MessageSender")
+  assignedFollowUps            FollowUp[]             @relation("FollowUpAssignee")
+  approvedFollowUps            FollowUp[]             @relation("FollowUpApprover")
+  events                       Event[]                @relation("EventActor")
+  auditLogs                    AuditLog[]             @relation("AuditActor")
+  sessions                     Session[]
+  refreshTokens                RefreshToken[]
+  leadNotes                    LeadNote[]             @relation("LeadNoteAuthor")
+  leadActivities               LeadActivity[]         @relation("LeadActivityAssignee")
+  leadStatusTransitionsChanged LeadStatusTransition[] @relation("LeadStatusChangedBy")
 
   @@index([status])
   @@map("users")
@@ -250,10 +270,13 @@ model Lead {
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  company       Company        @relation(fields: [companyId], references: [id])
-  owner         User?          @relation("LeadOwner", fields: [ownerId], references: [id])
-  conversations Conversation[]
-  followUps     FollowUp[]
+  company           Company                @relation(fields: [companyId], references: [id])
+  owner             User?                  @relation("LeadOwner", fields: [ownerId], references: [id])
+  conversations     Conversation[]
+  followUps         FollowUp[]
+  notes             LeadNote[]
+  activities        LeadActivity[]
+  statusTransitions LeadStatusTransition[]
 
   @@index([companyId, phone])
   @@index([companyId, status])
@@ -265,6 +288,69 @@ model Lead {
   @@index([companyId, convertedAt])
   @@index([companyId, firstResponseAt])
   @@map("leads")
+}
+
+model LeadNote {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  leadId    String    @map("lead_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  body      String
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+  lead    Lead    @relation(fields: [leadId], references: [id])
+  user    User    @relation("LeadNoteAuthor", fields: [userId], references: [id])
+
+  @@index([companyId, leadId, createdAt])
+  @@index([companyId, userId])
+  @@map("lead_notes")
+}
+
+model LeadActivity {
+  id          String             @id @default(uuid()) @db.Uuid
+  companyId   String             @map("company_id") @db.Uuid
+  leadId      String             @map("lead_id") @db.Uuid
+  userId      String?            @map("user_id") @db.Uuid
+  type        LeadActivityType
+  status      LeadActivityStatus @default(PLANNED)
+  title       String             @db.VarChar(200)
+  body        String?
+  scheduledAt DateTime?          @map("scheduled_at") @db.Timestamptz(6)
+  completedAt DateTime?          @map("completed_at") @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+  lead    Lead    @relation(fields: [leadId], references: [id])
+  user    User?   @relation("LeadActivityAssignee", fields: [userId], references: [id])
+
+  @@index([companyId, leadId, scheduledAt])
+  @@index([companyId, status, scheduledAt])
+  @@index([companyId, userId, status])
+  @@map("lead_activities")
+}
+
+/// Append-only pipeline history (no soft delete). Used for avgTimeInStage / conversionByStage.
+model LeadStatusTransition {
+  id               String      @id @default(uuid()) @db.Uuid
+  companyId        String      @map("company_id") @db.Uuid
+  leadId           String      @map("lead_id") @db.Uuid
+  fromStatus       LeadStatus? @map("from_status")
+  toStatus         LeadStatus  @map("to_status")
+  changedByUserId  String?     @map("changed_by_user_id") @db.Uuid
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  company   Company @relation(fields: [companyId], references: [id])
+  lead      Lead    @relation(fields: [leadId], references: [id])
+  changedBy User?   @relation("LeadStatusChangedBy", fields: [changedByUserId], references: [id])
+
+  @@index([companyId, leadId, createdAt])
+  @@index([companyId, toStatus, createdAt])
+  @@map("lead_status_transitions")
 }
 
 model Conversation {

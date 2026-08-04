@@ -27,9 +27,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { AssignLeadDto } from './dto/assign-lead.dto';
+import { BulkAssignLeadsDto } from './dto/bulk-assign-leads.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { ListLeadsQueryDto } from './dto/list-leads.query.dto';
+import { TimelineQueryDto } from './dto/timeline.query.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
+import { LeadTimelineService } from './lead-timeline.service';
 import { LeadsService } from './leads.service';
 
 @ApiTags('leads')
@@ -38,7 +41,10 @@ import { LeadsService } from './leads.service';
 @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
 @Controller('leads')
 export class LeadsController {
-  constructor(private readonly leadsService: LeadsService) {}
+  constructor(
+    private readonly leadsService: LeadsService,
+    private readonly timelineService: LeadTimelineService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -60,6 +66,23 @@ export class LeadsController {
     return this.leadsService.list(this.asCompanyActor(user), query);
   }
 
+  @Post('bulk-assign')
+  @HttpCode(HttpStatus.OK)
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
+  @ApiOperation({
+    summary: 'Bulk assign/unassign leads (OWNER|ADMIN; ownerId null = unassign)',
+  })
+  bulkAssign(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: BulkAssignLeadsDto,
+    @Req() req: Request,
+  ) {
+    return this.leadsService.bulkAssign(this.asCompanyActor(user), dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get lead by id' })
   findOne(
@@ -67,6 +90,16 @@ export class LeadsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.leadsService.findOne(this.asCompanyActor(user), id);
+  }
+
+  @Get(':id/timeline')
+  @ApiOperation({ summary: 'Composed lead timeline (page/limit, occurredAt ASC)' })
+  timeline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TimelineQueryDto,
+  ) {
+    return this.timelineService.getTimeline(this.asCompanyActor(user), id, query);
   }
 
   @Patch(':id')
@@ -93,6 +126,21 @@ export class LeadsController {
     @Req() req: Request,
   ) {
     return this.leadsService.assign(this.asCompanyActor(user), id, dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post(':id/unassign')
+  @HttpCode(HttpStatus.OK)
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
+  @ApiOperation({ summary: 'Unassign lead owner (OWNER|ADMIN)' })
+  unassign(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.leadsService.unassign(this.asCompanyActor(user), id, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });

@@ -84,7 +84,8 @@ jobs:
         run: npm run seed:test
 
       - name: E2E tests
-        run: npm run test:e2e -- --ci --forceExit
+        # Serial: suites share seeded users; auth logout-all would race parallel workers.
+        run: npm run test:e2e -- --ci --forceExit --runInBand
 
       - name: Build
         run: npm run build

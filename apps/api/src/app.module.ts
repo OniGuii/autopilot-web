@@ -17,6 +17,7 @@ import { FollowUpModule } from './modules/follow-up/follow-up.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { OpsModule } from './modules/ops/ops.module';
+import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { ObservabilityModule } from './observability/observability.module';
@@ -56,6 +57,7 @@ const workersInApi = (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true';
     AiModule,
     FollowUpModule,
     DashboardModule,
+    PipelineModule,
     OpsModule,
     EventsModule,
     AuditModule,

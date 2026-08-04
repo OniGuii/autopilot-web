@@ -19,6 +19,9 @@ export const TENANT_SCOPED_MODELS = [
   'auditLog',
   'whatsAppInstance',
   'webhookEvent',
+  'leadNote',
+  'leadActivity',
+  'leadStatusTransition',
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];
