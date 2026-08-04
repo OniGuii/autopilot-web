@@ -32,8 +32,14 @@ export const envValidationSchema = Joi.object({
   EVOLUTION_API_KEY: Joi.string().allow('').optional(),
   EVOLUTION_INSTANCE: Joi.string().allow('').optional(),
   EVOLUTION_TIMEOUT_SEND_MS: Joi.number().integer().min(1000).default(15_000),
-  EVOLUTION_TIMEOUT_CONNECT_MS: Joi.number().integer().min(1000).default(20_000),
-  EVOLUTION_TIMEOUT_DEFAULT_MS: Joi.number().integer().min(1000).default(10_000),
+  EVOLUTION_TIMEOUT_CONNECT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .default(20_000),
+  EVOLUTION_TIMEOUT_DEFAULT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .default(10_000),
   EVOLUTION_RETRY_MAX: Joi.number().integer().min(0).default(2),
   EVOLUTION_RETRY_BASE_MS: Joi.number().integer().min(0).default(200),
   EVOLUTION_RETRY_MAX_DELAY_MS: Joi.number().integer().min(0).default(2_000),
@@ -79,14 +85,31 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_TTL_DAYS: Joi.number().default(7),
 
   AUTH_MAX_SESSIONS_PER_USER: Joi.number().integer().min(1).default(5),
-  AUTH_MEMBERSHIP_CACHE_TTL_SECONDS: Joi.number()
-    .integer()
-    .min(1)
-    .default(30),
+  AUTH_MEMBERSHIP_CACHE_TTL_SECONDS: Joi.number().integer().min(1).default(30),
 
   ASYNC_INBOUND_ENABLED: Joi.string().valid('true', 'false').default('false'),
   ASYNC_WORKERS_IN_API: Joi.string().valid('true', 'false').default('true'),
   ASYNC_INBOUND_ATTEMPTS: Joi.number().integer().min(1).default(5),
   ASYNC_INBOUND_BACKOFF_MS: Joi.number().integer().min(100).default(2_000),
-  ASYNC_INBOUND_CONCURRENCY: Joi.number().integer().min(1).default(10),
+  /** @deprecated prefer QUEUE_CONCURRENCY */
+  ASYNC_INBOUND_CONCURRENCY: Joi.number().integer().min(1).optional(),
+
+  /** 7.1-H — fail-fast queue retention / concurrency */
+  QUEUE_CONCURRENCY: Joi.number().integer().min(1).default(10),
+  QUEUE_REMOVE_ON_COMPLETE: Joi.number().integer().min(0).default(1_000),
+  QUEUE_REMOVE_ON_FAIL: Joi.number().integer().min(0).default(5_000),
+  QUEUE_DLQ_MAX_JOBS: Joi.number().integer().min(1).default(1_000),
+  QUEUE_DLQ_RETENTION_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .default(7 * 24 * 60 * 60 * 1000),
+  QUEUE_DLQ_STALE_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .default(60 * 60 * 1000),
+  WEBHOOK_CLAIM_STALE_MS: Joi.number().integer().min(1_000).default(45_000),
+  WEBHOOK_RECEIVED_STALE_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .default(5 * 60 * 1000),
 });

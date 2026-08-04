@@ -22,6 +22,7 @@ describe('OpsService', () => {
     webhookRows?: unknown[];
     postgresOk?: boolean;
     redisOk?: boolean;
+    queueSnapshot?: Record<string, unknown>;
   }) {
     const counts = {
       totalMessages: 10,
@@ -40,20 +41,25 @@ describe('OpsService', () => {
     const followUpCalls: unknown[] = [];
     const audits: unknown[] = [];
 
-    let messageFindResult = opts?.messages ?? [];
-    let followUpFindResult = opts?.followUps ?? [];
+    const messageFindResult = opts?.messages ?? [];
+    const followUpFindResult = opts?.followUps ?? [];
 
     const prisma = {
       whatsAppInstance: {
-        findFirst: jest.fn().mockResolvedValue(
-          opts?.instanceStatus === null
-            ? null
-            : { status: opts?.instanceStatus ?? 'CONNECTED' },
-        ),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(
+            opts?.instanceStatus === null
+              ? null
+              : { status: opts?.instanceStatus ?? 'CONNECTED' },
+          ),
       },
       message: {
         count: jest.fn().mockImplementation(async ({ where }) => {
-          if (where.status === OUTBOUND_MESSAGE_STATUS.PENDING && where.createdAt) {
+          if (
+            where.status === OUTBOUND_MESSAGE_STATUS.PENDING &&
+            where.createdAt
+          ) {
             return counts.pendingStale;
           }
           if (where.status === OUTBOUND_MESSAGE_STATUS.PENDING) {
@@ -93,7 +99,18 @@ describe('OpsService', () => {
         }),
       },
       webhookEvent: {
-        count: jest.fn().mockResolvedValue(counts.webhookFailedRecent),
+        count: jest.fn().mockImplementation(async ({ where }) => {
+          if (
+            where.status === WebhookEventStatus.RECEIVED &&
+            where.receivedAt
+          ) {
+            return counts.staleReceivedWebhooks ?? 0;
+          }
+          if (where.status === WebhookEventStatus.FAILED) {
+            return counts.webhookFailedRecent;
+          }
+          return counts.webhookFailedRecent;
+        }),
         findMany: jest.fn().mockResolvedValue(opts?.webhookRows ?? []),
         findFirst: jest.fn().mockImplementation(async ({ where }) => {
           const rows = (opts?.webhookRows ?? []) as Array<{
@@ -172,22 +189,35 @@ describe('OpsService', () => {
       }),
     };
 
+    const defaultQueueSnapshot = {
+      available: opts?.redisOk === false ? false : true,
+      error: opts?.redisOk === false ? 'redis down' : undefined,
+      whatsappInbound:
+        opts?.redisOk === false
+          ? null
+          : {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0,
+            },
+      dlq: opts?.redisOk === false ? null : { depth: 0, oldestAgeMs: null },
+      dlqWhatsappInbound: opts?.redisOk === false ? null : 0,
+      processingDurationP95Ms: null,
+      retriesTotal: 0,
+      stalledTotal: 0,
+      claimFailuresTotal: 0,
+    };
     const asyncMetrics = {
-      snapshot: jest.fn().mockResolvedValue({
-        whatsappInbound: {
-          waiting: 0,
-          active: 0,
-          completed: 0,
-          failed: 0,
-          delayed: 0,
-        },
-        dlqWhatsappInbound: 0,
-      }),
+      snapshot: jest
+        .fn()
+        .mockResolvedValue(opts?.queueSnapshot ?? defaultQueueSnapshot),
     };
 
     const service = new OpsService(
       prisma as never,
-      audit as never,
+      audit,
       config as never,
       evolution as never,
       asyncMetrics as never,
@@ -229,12 +259,46 @@ describe('OpsService', () => {
         evolutionCircuitState: 'CLOSED',
         evolutionTimeoutsLast15m: 0,
         webhookInflight: 0,
+        staleReceivedWebhooks: 0,
         queues: expect.objectContaining({
+          available: true,
           dlqWhatsappInbound: 0,
+          dlqDepth: 0,
           whatsappInbound: expect.objectContaining({ waiting: 0 }),
+          retriesTotal: 0,
+          stalledTotal: 0,
+          claimFailuresTotal: 0,
         }),
       }),
     );
+  });
+
+  it('alerts on stale RECEIVED webhooks and stale DLQ', async () => {
+    const { service } = build({
+      counts: { staleReceivedWebhooks: 3 },
+      queueSnapshot: {
+        available: true,
+        whatsappInbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        dlq: { depth: 2, oldestAgeMs: 3_600_000 },
+        dlqWhatsappInbound: 2,
+        processingDurationP95Ms: 12,
+        retriesTotal: 1,
+        stalledTotal: 0,
+        claimFailuresTotal: 0,
+      },
+    });
+
+    const result = await service.getAlerts(actor);
+    const codes = result.alerts.map((a) => a.code);
+    expect(codes).toContain('WEBHOOK_EVENT_STALE');
+    expect(codes).toContain('QUEUE_DLQ_DEPTH');
+    expect(codes).toContain('QUEUE_DLQ_STALE');
   });
 
   it('builds alerts when whatsapp disconnected and pending stale', async () => {
@@ -261,9 +325,18 @@ describe('OpsService', () => {
       expect.objectContaining({ circuit: 'CLOSED', stubMode: true }),
     );
     expect(health.queues).toEqual(
-      expect.objectContaining({ dlqWhatsappInbound: 0 }),
+      expect.objectContaining({ available: true, dlqWhatsappInbound: 0 }),
     );
     expect(health.timestamp).toBeDefined();
+  });
+
+  it('health returns degraded when queue metrics unavailable', async () => {
+    const { service } = build({ redisOk: false });
+    const health = await service.getHealth(actor);
+    expect(health.status).toBe('degraded');
+    expect(health.queues).toEqual(
+      expect.objectContaining({ available: false }),
+    );
   });
 
   it('health returns degraded when whatsapp down', async () => {
