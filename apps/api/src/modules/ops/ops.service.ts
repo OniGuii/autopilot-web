@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   FollowUpStatus,
   Prisma,
@@ -10,6 +10,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AsyncMetricsService } from '../async/async-metrics.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { PrometheusMetricsService } from '../../observability/prometheus-metrics.service';
+import {
+  OBS_HIGH_ERROR_RATE_THRESHOLD_DEFAULT,
+  OBS_HIGH_LATENCY_MS_DEFAULT,
+  OBS_HTTP_ERROR_MIN_SAMPLES_DEFAULT,
+  OBS_QUEUE_BACKLOG_HIGH_DEFAULT,
+} from '../../observability/observability.constants';
 import { EvolutionClient } from '../whatsapp/evolution.client';
 import { OUTBOUND_MESSAGE_STATUS } from '../whatsapp/outbound/message-status';
 import { ListAuditQueryDto } from './dto/list-audit.query.dto';
@@ -113,6 +120,10 @@ export class OpsService {
   private readonly aiSuggestBacklogHigh: number;
   private readonly aiFailureRateMinSamples: number;
   private readonly aiFailureRateThreshold: number;
+  private readonly highErrorRateThreshold: number;
+  private readonly highLatencyMs: number;
+  private readonly queueBacklogHigh: number;
+  private readonly httpErrorMinSamples: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -120,6 +131,7 @@ export class OpsService {
     private readonly config: ConfigService,
     private readonly evolution: EvolutionClient,
     private readonly asyncMetrics: AsyncMetricsService,
+    @Optional() private readonly prom?: PrometheusMetricsService,
   ) {
     this.reconcileTake = config.get<number>(
       'ops.reconcileTake',
@@ -145,6 +157,22 @@ export class OpsService {
     this.aiFailureRateThreshold = config.get<number>(
       'async.aiFailureRateThreshold',
       0.5,
+    );
+    this.highErrorRateThreshold = config.get<number>(
+      'observability.highErrorRateThreshold',
+      OBS_HIGH_ERROR_RATE_THRESHOLD_DEFAULT,
+    );
+    this.highLatencyMs = config.get<number>(
+      'observability.highLatencyMs',
+      OBS_HIGH_LATENCY_MS_DEFAULT,
+    );
+    this.queueBacklogHigh = config.get<number>(
+      'observability.queueBacklogHigh',
+      OBS_QUEUE_BACKLOG_HIGH_DEFAULT,
+    );
+    this.httpErrorMinSamples = config.get<number>(
+      'observability.httpErrorMinSamples',
+      OBS_HTTP_ERROR_MIN_SAMPLES_DEFAULT,
     );
   }
 
@@ -511,6 +539,60 @@ export class OpsService {
         severity: 'warning',
         message: 'AI suggestion generation failure rate is high',
         count: Math.round((aiFailed / aiTotal) * 100),
+      });
+      alerts.push({
+        code: 'AI_FAILURE_RATE',
+        severity: 'warning',
+        message: 'AI suggestion generation failure rate is high',
+        count: Math.round((aiFailed / aiTotal) * 100),
+      });
+    }
+
+    const inboundWaiting = metrics.queues.whatsappInbound?.waiting ?? 0;
+    const followupWaitingTotal = metrics.queues.followupScheduler?.waiting ?? 0;
+    const aiWaitingTotal = metrics.queues.aiSuggestions?.waiting ?? 0;
+    const maxQueueWaiting = Math.max(
+      inboundWaiting,
+      followupWaitingTotal,
+      aiWaitingTotal,
+    );
+    if (maxQueueWaiting >= this.queueBacklogHigh) {
+      alerts.push({
+        code: 'QUEUE_BACKLOG',
+        severity: 'warning',
+        message: 'One or more BullMQ queues exceed backlog threshold',
+        count: maxQueueWaiting,
+      });
+    }
+
+    const httpStats = this.prom?.getHttpWindowStats();
+    if (
+      httpStats &&
+      httpStats.total >= this.httpErrorMinSamples &&
+      httpStats.errorRate >= this.highErrorRateThreshold
+    ) {
+      alerts.push({
+        code: 'HIGH_ERROR_RATE',
+        severity: 'error',
+        message: 'HTTP 5xx error rate is high (last 15m)',
+        count: Math.round(httpStats.errorRate * 100),
+      });
+    }
+
+    const latencyCandidates = [
+      httpStats?.p95Ms ?? null,
+      metrics.webhookP95Ms,
+      metrics.queues.processingDurationP95Ms,
+    ].filter((v): v is number => typeof v === 'number');
+    const maxLatency = latencyCandidates.length
+      ? Math.max(...latencyCandidates)
+      : null;
+    if (maxLatency != null && maxLatency >= this.highLatencyMs) {
+      alerts.push({
+        code: 'HIGH_LATENCY',
+        severity: 'warning',
+        message: 'Observed p95 latency exceeds threshold',
+        count: Math.round(maxLatency),
       });
     }
 

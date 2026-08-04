@@ -1,22 +1,31 @@
 import { AsyncLocalStorage } from 'async_hooks';
-
-export type TenantAlsStore = {
-  companyId?: string;
-};
+import {
+  getRequestContext,
+  getTenantCompanyId as getCompanyIdFromContext,
+  requestContextAls,
+  runWithRequestContext,
+  type RequestContextStore,
+} from '../../observability/request-context';
 
 /**
- * Request-scoped tenant storage for Prisma tenant extension.
- * Populated by TenantInterceptor from JWT.cid when present.
+ * Back-compat tenant ALS API.
+ * Storage is shared with observability request context (8A).
  */
-export const tenantAls = new AsyncLocalStorage<TenantAlsStore>();
+export type TenantAlsStore = RequestContextStore;
+
+/** @deprecated Use requestContextAls — alias kept for existing imports. */
+export const tenantAls: AsyncLocalStorage<TenantAlsStore> = requestContextAls;
 
 export function getTenantCompanyId(): string | undefined {
-  return tenantAls.getStore()?.companyId;
+  return getCompanyIdFromContext();
 }
 
+/** Historical signature: runWithTenant(companyId, fn). */
 export function runWithTenant<T>(
   companyId: string | undefined,
   fn: () => T,
 ): T {
-  return tenantAls.run({ companyId }, fn);
+  return runWithRequestContext({ companyId }, fn);
 }
+
+export { getRequestContext, runWithRequestContext };

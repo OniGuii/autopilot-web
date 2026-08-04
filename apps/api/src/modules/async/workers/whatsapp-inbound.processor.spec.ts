@@ -20,6 +20,7 @@ describe('WhatsappInboundProcessor', () => {
       whatsapp as never,
       dlq as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       config as never,
     );
 
@@ -59,6 +60,7 @@ describe('WhatsappInboundProcessor', () => {
       whatsapp as never,
       { moveWhatsappInboundToDlq: jest.fn() } as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       { get: jest.fn((_k: string, def?: unknown) => def) } as never,
     );
 
@@ -89,6 +91,7 @@ describe('WhatsappInboundProcessor', () => {
       whatsapp as never,
       dlq as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       config as never,
     );
 
@@ -136,6 +139,7 @@ describe('WhatsappInboundProcessor', () => {
       {} as never,
       {} as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       { get: jest.fn((_k: string, def?: unknown) => def) } as never,
     );
     processor.onStalled('webhook:we-1');

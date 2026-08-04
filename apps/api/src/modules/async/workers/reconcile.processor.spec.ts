@@ -17,6 +17,7 @@ describe('ReconcileProcessor', () => {
     const processor = new ReconcileProcessor(
       cycle as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       { get: jest.fn((_k: string, def?: unknown) => def) } as never,
     );
 

@@ -5,6 +5,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -14,6 +15,7 @@ import {
   WhatsAppConnectionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/jwt-payload';
 import { newCorrelationId } from '../correlation';
@@ -63,6 +65,7 @@ export class WhatsappSendService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly evolution: EvolutionClient,
+    @Optional() private readonly prom?: PrometheusMetricsService,
   ) {}
 
   /** P4-F1 helper — check before FollowUp enters EXECUTING */
@@ -118,9 +121,7 @@ export class WhatsappSendService {
     }
 
     if (conversation.leadId !== lead.id) {
-      throw new BadRequestException(
-        'conversationId does not belong to leadId',
-      );
+      throw new BadRequestException('conversationId does not belong to leadId');
     }
 
     if (
@@ -222,9 +223,11 @@ export class WhatsappSendService {
         });
       });
 
+      this.prom?.recordWhatsappSend(false);
       throw httpException;
     }
 
+    this.prom?.recordWhatsappSend(true);
     const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {

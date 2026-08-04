@@ -19,6 +19,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SharedModule } from './shared/shared.module';
 
@@ -28,6 +29,7 @@ const workersInApi = (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true';
 @Module({
   imports: [
     AppConfigModule,
+    ObservabilityModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

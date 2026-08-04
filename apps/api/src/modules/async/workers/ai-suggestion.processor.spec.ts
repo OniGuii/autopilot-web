@@ -50,6 +50,10 @@ describe('AiSuggestionProcessor', () => {
     const processor = new AiSuggestionProcessor(
       ai as never,
       metrics as never,
+      {
+        recordQueueJobDuration: jest.fn(),
+        recordAiFailure: jest.fn(),
+      } as never,
       config as never,
     );
 
@@ -84,6 +88,10 @@ describe('AiSuggestionProcessor', () => {
     const processor = new AiSuggestionProcessor(
       ai as never,
       metrics as never,
+      {
+        recordQueueJobDuration: jest.fn(),
+        recordAiFailure: jest.fn(),
+      } as never,
       config as never,
     );
 
@@ -104,6 +112,10 @@ describe('AiSuggestionProcessor', () => {
     const processor = new AiSuggestionProcessor(
       ai as never,
       metrics as never,
+      {
+        recordQueueJobDuration: jest.fn(),
+        recordAiFailure: jest.fn(),
+      } as never,
       config as never,
     );
 
@@ -118,6 +130,10 @@ describe('AiSuggestionProcessor', () => {
     const processor = new AiSuggestionProcessor(
       {} as never,
       metrics as never,
+      {
+        recordQueueJobDuration: jest.fn(),
+        recordAiFailure: jest.fn(),
+      } as never,
       config as never,
     );
     processor.onFailed(

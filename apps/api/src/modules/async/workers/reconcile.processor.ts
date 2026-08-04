@@ -7,6 +7,8 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { AsyncMetricsService } from '../async-metrics.service';
+import { withBullJobContext } from '../../../observability/bull-job-context';
+import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
 import {
   ASYNC_LOCK_DURATION_MS_DEFAULT,
   QUEUE_RECONCILE_WORKER,
@@ -30,6 +32,7 @@ export class ReconcileProcessor
   constructor(
     private readonly cycle: ReconcileCycleService,
     private readonly metrics: AsyncMetricsService,
+    private readonly prom: PrometheusMetricsService,
     config: ConfigService,
   ) {
     super();
@@ -62,16 +65,20 @@ export class ReconcileProcessor
     ok: true;
     result: Awaited<ReturnType<ReconcileCycleService['runCycle']>>;
   }> {
-    const started = Date.now();
-    this.logger.debug(
-      `process reconcile jobId=${job.id} correlationId=${job.data.correlationId}`,
-    );
-    try {
-      const result = await this.cycle.runCycle(job.data);
-      return { ok: true, result };
-    } finally {
-      this.metrics.recordProcessingDuration(Date.now() - started);
-    }
+    return withBullJobContext(QUEUE_RECONCILE_WORKER, job, async () => {
+      const started = Date.now();
+      this.logger.debug(
+        `process reconcile jobId=${job.id} correlationId=${job.data.correlationId}`,
+      );
+      try {
+        const result = await this.cycle.runCycle(job.data);
+        return { ok: true, result };
+      } finally {
+        const durationMs = Date.now() - started;
+        this.metrics.recordProcessingDuration(durationMs);
+        this.prom.recordQueueJobDuration(QUEUE_RECONCILE_WORKER, durationMs);
+      }
+    });
   }
 
   @OnWorkerEvent('failed')

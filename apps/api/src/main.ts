@@ -4,27 +4,18 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
-
-function swaggerBasicAuth(user: string, password: string) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const header = req.headers.authorization;
-    if (header?.startsWith('Basic ')) {
-      const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-      const sep = decoded.indexOf(':');
-      const u = sep >= 0 ? decoded.slice(0, sep) : '';
-      const p = sep >= 0 ? decoded.slice(sep + 1) : '';
-      if (u === user && p === password) {
-        next();
-        return;
-      }
-    }
-    res.setHeader('WWW-Authenticate', 'Basic realm="AutoPilot API Docs"');
-    res.status(401).send('Authentication required');
-  };
-}
+import {
+  shutdownOpenTelemetry,
+  startOpenTelemetry,
+} from './observability/otel.bootstrap';
+import { StructuredLogger } from './observability/structured-logger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  startOpenTelemetry();
+
+  const app = await NestFactory.create(AppModule, {
+    logger: new StructuredLogger(),
+  });
   app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
@@ -42,7 +33,7 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix(apiPrefix, {
-    exclude: ['health', 'health/live', 'health/ready'],
+    exclude: ['health', 'health/live', 'health/ready', 'metrics'],
   });
 
   if (swaggerEnabled) {
@@ -77,12 +68,38 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
+  process.once('beforeExit', () => {
+    void shutdownOpenTelemetry();
+  });
+
   await app.listen(port);
 
-  console.log(`AutoPilot API listening on http://localhost:${port}`);
+  const logger = app.get(StructuredLogger);
+  logger.log(
+    `AutoPilot API listening on http://localhost:${port}`,
+    'Bootstrap',
+  );
   if (swaggerEnabled) {
-    console.log(`Swagger docs at http://localhost:${port}/docs`);
+    logger.log(`Swagger docs at http://localhost:${port}/docs`, 'Bootstrap');
   }
+}
+
+function swaggerBasicAuth(user: string, password: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const header = req.headers.authorization;
+    if (header?.startsWith('Basic ')) {
+      const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+      const sep = decoded.indexOf(':');
+      const u = sep >= 0 ? decoded.slice(0, sep) : '';
+      const p = sep >= 0 ? decoded.slice(sep + 1) : '';
+      if (u === user && p === password) {
+        next();
+        return;
+      }
+    }
+    res.setHeader('WWW-Authenticate', 'Basic realm="AutoPilot API Docs"');
+    res.status(401).send('Authentication required');
+  };
 }
 
 void bootstrap();
