@@ -186,7 +186,9 @@ Config:
 
 ## 10. Testes executados
 
-### Unitários
+### Unitários (`npm test`)
+
+**19 suites / 105 tests — passed**
 
 | Suite | Cobertura |
 |---|---|
@@ -194,7 +196,9 @@ Config:
 | `auth-revocation.service.spec.ts` | logout-all, revokeSession, membership/user/company hooks |
 | `auth.service.hardening.spec.ts` | max sessions, refresh reuse, logoutAll, refresh membership assert |
 
-### E2E (`test/auth.e2e-spec.ts`)
+### E2E (`npm run test:e2e -- --testPathPatterns=auth`)
+
+**1 suite / 5 tests — passed**
 
 - login → select-company → me  
 - logout-all → access 401  
@@ -202,7 +206,7 @@ Config:
 
 ### Build
 
-- `npm run build` (apps/api)
+- `npm run build` (apps/api) — OK
 
 ---
 
