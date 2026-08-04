@@ -1,7 +1,9 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -15,8 +17,11 @@ import {
 import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { WhatsappInboundJobPayload } from '../async/async.types';
+import { WhatsappInboundProducer } from '../async/producers/whatsapp-inbound.producer';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { newCorrelationId } from './correlation';
 import { EvolutionChannelMetrics } from './evolution.channel-metrics';
 import {
   WEBHOOK_MAX_INFLIGHT_DEFAULT,
@@ -58,6 +63,10 @@ export type WebhookResponse = {
   ok: true;
   ignored?: boolean;
   duplicate?: boolean;
+  queued?: boolean;
+  webhookEventId?: string;
+  correlationId?: string;
+  jobId?: string;
   status?: WhatsAppConnectionStatus;
   messageId?: string;
   leadId?: string;
@@ -67,8 +76,10 @@ export type WebhookResponse = {
 
 @Injectable()
 export class WhatsappService {
+  private readonly logger = new Logger(WhatsappService.name);
   private readonly webhookSlowMs: number;
   private readonly webhookMaxInflight: number;
+  private readonly asyncInboundEnabled: boolean;
   private webhookInflight = 0;
 
   constructor(
@@ -79,6 +90,8 @@ export class WhatsappService {
     private readonly delivery: WhatsappDeliveryService,
     private readonly channelMetrics: EvolutionChannelMetrics,
     config: ConfigService,
+    @Optional()
+    private readonly inboundProducer?: WhatsappInboundProducer,
   ) {
     this.webhookSlowMs = config.get<number>(
       'evolution.webhookSlowMs',
@@ -88,6 +101,8 @@ export class WhatsappService {
       'evolution.webhookMaxInflight',
       WEBHOOK_MAX_INFLIGHT_DEFAULT,
     );
+    this.asyncInboundEnabled =
+      config.get<boolean>('async.inboundEnabled', false) === true;
   }
 
   async connect(
@@ -252,46 +267,168 @@ export class WhatsappService {
       return { ok: true, duplicate: true };
     }
 
+    const correlationId = newCorrelationId();
+
+    // 7.1 — async inbound (flag). Rollback: ASYNC_INBOUND_ENABLED=false → sync.
+    if (this.asyncInboundEnabled && this.inboundProducer) {
+      try {
+        const { jobId } = await this.inboundProducer.enqueue({
+          v: 1,
+          companyId,
+          webhookEventId: webhookEvent.id,
+          instanceId: instance.id,
+          eventType: eventName,
+          correlationId,
+        });
+        return {
+          ok: true,
+          queued: true,
+          webhookEventId: webhookEvent.id,
+          correlationId,
+          jobId,
+        };
+      } catch (err) {
+        // Fail-open to sync so RECEIVED events are not stuck if Redis blips.
+        this.logger.warn(
+          `inbound enqueue failed; falling back to sync correlationId=${correlationId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    return this.dispatchWebhookEvent({
+      instance,
+      companyId,
+      eventName,
+      payload,
+      webhookEventId: webhookEvent.id,
+      correlationId,
+    });
+  }
+
+  /**
+   * Worker entry (7.1) — process a previously RECEIVED webhook event.
+   * Domain handlers unchanged; orchestration only.
+   */
+  async processQueuedWebhook(
+    job: WhatsappInboundJobPayload,
+  ): Promise<WebhookResponse> {
+    const event = await this.prisma.webhookEvent.findFirst({
+      where: {
+        id: job.webhookEventId,
+        companyId: job.companyId,
+        deletedAt: null,
+      },
+    });
+    if (!event) {
+      throw new NotFoundException(
+        `WebhookEvent ${job.webhookEventId} not found`,
+      );
+    }
+
+    // Already terminal — idempotent noop for retries.
+    if (
+      event.status === WebhookEventStatus.PROCESSED ||
+      event.status === WebhookEventStatus.IGNORED ||
+      event.status === WebhookEventStatus.DUPLICATE
+    ) {
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'ALREADY_FINAL',
+        correlationId: job.correlationId,
+        webhookEventId: event.id,
+      };
+    }
+
+    const instance = await this.prisma.whatsAppInstance.findFirst({
+      where: { id: job.instanceId, companyId: job.companyId, deletedAt: null },
+    });
+    if (!instance) {
+      throw new NotFoundException('WhatsApp instance not found for job');
+    }
+
+    const payload =
+      event.payload &&
+      typeof event.payload === 'object' &&
+      !Array.isArray(event.payload)
+        ? (event.payload as Record<string, unknown>)
+        : {};
+
+    return this.dispatchWebhookEvent({
+      instance,
+      companyId: job.companyId,
+      eventName: event.eventType,
+      payload,
+      webhookEventId: event.id,
+      correlationId: job.correlationId,
+    });
+  }
+
+  private async dispatchWebhookEvent(input: {
+    instance: WhatsAppInstance;
+    companyId: string;
+    eventName: string;
+    payload: Record<string, unknown>;
+    webhookEventId: string;
+    correlationId: string;
+  }): Promise<WebhookResponse> {
+    const {
+      instance,
+      companyId,
+      eventName,
+      payload,
+      webhookEventId,
+      correlationId,
+    } = input;
+
     try {
       if (this.isConnectionEvent(eventName)) {
         const result = await this.processConnectionEvent(instance, payload);
         await this.finalizeWebhookEvent(
-          webhookEvent.id,
+          webhookEventId,
           result.ignored
             ? WebhookEventStatus.IGNORED
             : WebhookEventStatus.PROCESSED,
           result.ignored ? 'NO_STATUS_CHANGE_OR_UNMAPPED' : null,
         );
-        return result;
+        return { ...result, correlationId, webhookEventId };
       }
 
       if (isDeliveryEvent(eventName)) {
-        return await this.processDeliveryEvent(
+        const result = await this.processDeliveryEvent(
           companyId,
           payload,
           eventName,
-          webhookEvent.id,
+          webhookEventId,
         );
+        return { ...result, correlationId, webhookEventId };
       }
 
       if (isMessageEvent(eventName)) {
-        return await this.processMessageEvent(
+        const result = await this.processMessageEvent(
           instance,
           companyId,
           payload,
-          webhookEvent.id,
+          webhookEventId,
         );
+        return { ...result, correlationId, webhookEventId };
       }
 
       await this.finalizeWebhookEvent(
-        webhookEvent.id,
+        webhookEventId,
         WebhookEventStatus.IGNORED,
         'UNSUPPORTED_EVENT',
       );
-      return { ok: true, ignored: true, reason: 'UNSUPPORTED_EVENT' };
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'UNSUPPORTED_EVENT',
+        correlationId,
+        webhookEventId,
+      };
     } catch (error) {
       await this.finalizeWebhookEvent(
-        webhookEvent.id,
+        webhookEventId,
         WebhookEventStatus.FAILED,
         error instanceof Error ? error.message.slice(0, 1000) : 'UNKNOWN_ERROR',
       );

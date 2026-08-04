@@ -88,7 +88,10 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       recordConnectionFlap: jest.fn(),
     };
     const config = {
-      get: jest.fn((_key: string, def?: unknown) => def),
+      get: jest.fn((key: string, def?: unknown) => {
+        if (key === 'async.inboundEnabled') return false;
+        return def;
+      }),
     };
 
     const service = new WhatsappService(
@@ -99,6 +102,7 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       delivery as never,
       channelMetrics as never,
       config as never,
+      undefined,
     );
 
     return { service, prisma, inbound, delivery, webhookEvents, instance };
@@ -138,6 +142,76 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('enqueues webhook when ASYNC_INBOUND_ENABLED (7.1)', async () => {
+    const hash = await argon2.hash(plainSecret);
+    const instance = {
+      id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      companyId,
+      instanceKey,
+      webhookSecretHash: hash,
+      status: 'CONNECTED',
+      deletedAt: null,
+    };
+    const prisma = {
+      whatsAppInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      webhookEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'we-async-1' }),
+        update: jest.fn(),
+        findFirst: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    };
+    const enqueue = jest.fn().mockResolvedValue({ jobId: 'webhook:we-async-1' });
+    const config = {
+      get: jest.fn((key: string, def?: unknown) => {
+        if (key === 'async.inboundEnabled') return true;
+        return def;
+      }),
+    };
+    const service = new WhatsappService(
+      prisma as never,
+      { write: jest.fn() } as never,
+      {} as never,
+      { processInboundMessage: jest.fn() } as never,
+      {
+        applyDeliveryUpdate: jest.fn(),
+        healEchoRace: jest.fn(),
+      } as never,
+      {
+        beginWebhook: jest.fn(),
+        endWebhook: jest.fn(),
+        recordWebhook: jest.fn(),
+        recordConnectionFlap: jest.fn(),
+      } as never,
+      config as never,
+      { enqueue } as never,
+    );
+
+    const result = await service.handleWebhook(
+      instanceKey,
+      plainSecret,
+      inboundPayload,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        queued: true,
+        webhookEventId: 'we-async-1',
+        jobId: 'webhook:we-async-1',
+        correlationId: expect.any(String),
+      }),
+    );
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        v: 1,
+        webhookEventId: 'we-async-1',
+        companyId,
+        correlationId: expect.any(String),
+      }),
+    );
+  });
+
   it('processes inbound using instance.companyId (ignores payload companyId)', async () => {
     const { service, inbound, prisma, webhookEvents } = await build();
 
@@ -146,12 +220,16 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       companyId: 'evil-tenant-should-be-ignored',
     });
 
-    expect(result).toEqual({
-      ok: true,
-      messageId: 'msg-1',
-      leadId: 'lead-1',
-      conversationId: 'conv-1',
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        messageId: 'msg-1',
+        leadId: 'lead-1',
+        conversationId: 'conv-1',
+        correlationId: expect.any(String),
+        webhookEventId: expect.any(String),
+      }),
+    );
 
     expect(inbound.processInboundMessage).toHaveBeenCalledWith(
       companyId,
@@ -208,13 +286,16 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       inboundPayload,
     );
 
-    expect(result).toEqual({
-      ok: true,
-      duplicate: true,
-      messageId: 'msg-dup',
-      leadId: 'lead-1',
-      conversationId: 'conv-1',
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        duplicate: true,
+        messageId: 'msg-dup',
+        leadId: 'lead-1',
+        conversationId: 'conv-1',
+        correlationId: expect.any(String),
+      }),
+    );
     expect(prisma.webhookEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -240,11 +321,14 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       },
     });
 
-    expect(result).toEqual({
-      ok: true,
-      ignored: true,
-      reason: 'ECHO_FROM_ME',
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        ignored: true,
+        reason: 'ECHO_FROM_ME',
+        correlationId: expect.any(String),
+      }),
+    );
     expect(inbound.processInboundMessage).not.toHaveBeenCalled();
     expect(delivery.healEchoRace).toHaveBeenCalled();
     expect(prisma.webhookEvent.update).toHaveBeenCalledWith(

@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppConfigModule } from './config/config.module';
 import { CoreModule } from './core/core.module';
+import { AsyncModule } from './modules/async/async.module';
+import { WorkerModule } from './modules/async/worker.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -19,6 +21,9 @@ import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SharedModule } from './shared/shared.module';
+
+/** A2 — workers in API process unless ASYNC_WORKERS_IN_API=false. */
+const workersInApi = (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true';
 
 @Module({
   imports: [
@@ -37,6 +42,8 @@ import { SharedModule } from './shared/shared.module';
     CoreModule,
     SharedModule,
     PrismaModule,
+    AsyncModule,
+    ...(workersInApi ? [WorkerModule] : []),
     HealthModule,
     AuthModule,
     CompaniesModule,

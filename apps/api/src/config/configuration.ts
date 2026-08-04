@@ -84,6 +84,24 @@ export default () => {
     ops: {
       reconcileTake: parseInt(process.env.OPS_RECONCILE_TAKE ?? '100', 10),
     },
+    async: {
+      /** 7.1 — webhook enqueue (default off = sync rollback-safe). */
+      inboundEnabled: (process.env.ASYNC_INBOUND_ENABLED ?? 'false') === 'true',
+      /** A2 — run Bull workers inside API process. */
+      workersInApi: (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true',
+      inboundAttempts: parseInt(
+        process.env.ASYNC_INBOUND_ATTEMPTS ?? '5',
+        10,
+      ),
+      inboundBackoffMs: parseInt(
+        process.env.ASYNC_INBOUND_BACKOFF_MS ?? '2000',
+        10,
+      ),
+      inboundConcurrency: parseInt(
+        process.env.ASYNC_INBOUND_CONCURRENCY ?? '10',
+        10,
+      ),
+    },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {
       accessSecret: process.env.JWT_ACCESS_SECRET,

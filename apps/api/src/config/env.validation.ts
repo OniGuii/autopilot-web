@@ -83,4 +83,10 @@ export const envValidationSchema = Joi.object({
     .integer()
     .min(1)
     .default(30),
+
+  ASYNC_INBOUND_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  ASYNC_WORKERS_IN_API: Joi.string().valid('true', 'false').default('true'),
+  ASYNC_INBOUND_ATTEMPTS: Joi.number().integer().min(1).default(5),
+  ASYNC_INBOUND_BACKOFF_MS: Joi.number().integer().min(100).default(2_000),
+  ASYNC_INBOUND_CONCURRENCY: Joi.number().integer().min(1).default(10),
 });
