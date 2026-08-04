@@ -16,6 +16,9 @@ export function middleware(request: NextRequest) {
   const isApp =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/leads") ||
+    pathname.startsWith("/conversations") ||
+    pathname.startsWith("/follow-ups") ||
+    pathname.startsWith("/whatsapp") ||
     pathname === "/";
 
   if (!hasSession && (isAuthOnly || isApp) && pathname !== "/login") {
@@ -56,5 +59,8 @@ export const config = {
     "/select-company",
     "/dashboard/:path*",
     "/leads/:path*",
+    "/conversations/:path*",
+    "/follow-ups/:path*",
+    "/whatsapp/:path*",
   ],
 };

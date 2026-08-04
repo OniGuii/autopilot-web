@@ -10,12 +10,11 @@ Frontend SaaS Autopilot (Next.js 15 + TypeScript) — Sprint 1.
 - TanStack Query
 - React Hook Form + Zod
 
-## Sprint 1
+## Sprints
 
-- Login
-- Select Company (`companySlug`)
-- Dashboard (`GET /api/dashboard`)
-- Leads (list / create / detail)
+**Sprint 1:** Login, Select Company, Dashboard, Leads  
+
+**Sprint 2:** Conversations, Messages, WhatsApp (connect/status), Follow-ups (approve/reject/execute/reschedule)
 
 ## Setup
 

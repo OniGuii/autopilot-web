@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, LogOut, Users } from "lucide-react";
+import {
+  CalendarClock,
+  LayoutDashboard,
+  LogOut,
+  MessageSquare,
+  Smartphone,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +19,9 @@ import { Badge } from "@/components/ui/badge";
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/conversations", label: "Conversas", icon: MessageSquare },
+  { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
+  { href: "/whatsapp", label: "WhatsApp", icon: Smartphone },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -26,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="font-display text-2xl tracking-tight text-foreground">
               Autopilot
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">CRM SaaS · Sprint 1</p>
+            <p className="mt-1 text-xs text-muted-foreground">CRM SaaS · Sprint 2</p>
           </div>
           <Separator className="my-3" />
           <nav className="flex flex-1 flex-col gap-1">

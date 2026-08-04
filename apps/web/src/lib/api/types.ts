@@ -173,3 +173,164 @@ export type ApiErrorBody = {
   message?: string | string[];
   error?: string;
 };
+
+export type ConversationStatus = "OPEN" | "IDLE" | "CLOSED" | "ARCHIVED";
+export type MessageDirection = "INBOUND" | "OUTBOUND";
+export type Channel = "WHATSAPP";
+
+export type WhatsAppConnectionStatus =
+  | "QR_PENDING"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "ERROR";
+
+export type FollowUpStatus =
+  | "SUGGESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "SCHEDULED"
+  | "EXECUTING"
+  | "EXECUTED"
+  | "FAILED"
+  | "CANCELLED"
+  | "SKIPPED";
+
+export type ConversationLeadSummary = {
+  id: string;
+  name: string | null;
+  phone: string;
+};
+
+export type Message = {
+  id: string;
+  companyId: string;
+  conversationId: string;
+  direction: MessageDirection;
+  status: string;
+  body: string;
+  contentType: string;
+  senderType: string;
+  senderUserId: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Conversation = {
+  id: string;
+  companyId: string;
+  leadId: string;
+  channel: Channel;
+  status: ConversationStatus;
+  assignedUserId: string | null;
+  externalThreadId: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lead?: ConversationLeadSummary;
+  messages?: Message[];
+};
+
+export type ListConversationsQuery = {
+  status?: ConversationStatus;
+  leadId?: string;
+  assignedUserId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type CreateConversationInput = {
+  leadId: string;
+  channel?: Channel;
+  status?: ConversationStatus;
+  assignedUserId?: string | null;
+  externalThreadId?: string | null;
+};
+
+export type CreateMessageInput = {
+  direction: MessageDirection;
+  body: string;
+  senderUserId?: string;
+};
+
+export type WhatsAppStatus = {
+  companyId: string;
+  status: WhatsAppConnectionStatus;
+  phoneNumber: string | null;
+  instanceName: string;
+  instanceKey: string;
+  connectedAt: string | null;
+  qrCode?: string | null;
+  lastError?: string | null;
+};
+
+export type SendWhatsAppInput = {
+  leadId: string;
+  conversationId: string;
+  body: string;
+};
+
+export type FollowUp = {
+  id: string;
+  companyId: string;
+  leadId: string;
+  conversationId: string | null;
+  assignedUserId: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  channel: Channel;
+  status: FollowUpStatus;
+  type: string;
+  scheduledAt: string | null;
+  executedAt: string | null;
+  suggestedBody: string | null;
+  resultMessageId: string | null;
+  cancelReason: string | null;
+  attemptCount: number;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  lead?: { id: string; name: string | null; phone: string };
+  conversation?: { id: string; status: string } | null;
+  resultMessage?: {
+    id: string;
+    body: string | null;
+    direction: string;
+    sentAt: string | null;
+  } | null;
+};
+
+export type ListFollowUpsQuery = {
+  status?: FollowUpStatus;
+  leadId?: string;
+  assignedUserId?: string;
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  overdue?: boolean;
+  page?: number;
+  limit?: number;
+};
+
+export type CreateFollowUpInput = {
+  leadId: string;
+  conversationId?: string | null;
+  suggestedBody: string;
+  type?: string;
+  channel?: Channel;
+  scheduledAt?: string | null;
+  assignedUserId?: string | null;
+};
+
+export type ApproveFollowUpInput = {
+  scheduledAt?: string;
+};
+
+export type RejectFollowUpInput = {
+  reason: string;
+};
+
+export type RescheduleFollowUpInput = {
+  scheduledAt: string;
+};
