@@ -130,6 +130,9 @@ describe('CRM Operations (e2e)', () => {
       leadsUnassigned: expect.any(Number),
     });
 
+    // Fresh token: parallel auth e2e may call logout-all on the shared owner.
+    ownerToken = await authAs(app, E2E_OWNER_EMAIL);
+
     const bulkRes = await request(app.getHttpServer())
       .post('/api/leads/bulk-assign')
       .set('Authorization', `Bearer ${ownerToken}`)
