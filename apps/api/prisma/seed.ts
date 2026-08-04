@@ -23,6 +23,12 @@ function resolveProfile(): SeedProfile {
   return profile;
 }
 
+async function enableRlsBypass(): Promise<void> {
+  // 8B — seeds run as migrator/admin: bypass FORCE RLS for the session.
+  await prisma.$executeRaw`SELECT set_config('app.rls_bypass', 'on', false)`;
+  await prisma.$executeRaw`SELECT set_config('app.company_id', '', false)`;
+}
+
 async function main() {
   const profile = resolveProfile();
   // eslint-disable-next-line no-console
@@ -33,6 +39,8 @@ async function main() {
       'Refusing to seed when NODE_ENV=production (set ALLOW_PROD_SEED=true to override).',
     );
   }
+
+  await enableRlsBypass();
 
   let counts;
   switch (profile) {

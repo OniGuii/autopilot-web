@@ -161,4 +161,7 @@ export const envValidationSchema = Joi.object({
   OBS_HIGH_LATENCY_MS: Joi.number().integer().min(100).default(2_000),
   OBS_QUEUE_BACKLOG_HIGH: Joi.number().integer().min(1).default(100),
   OBS_HTTP_ERROR_MIN_SAMPLES: Joi.number().integer().min(1).default(20),
+  OBS_SLOW_QUERY_ALERT_MIN: Joi.number().integer().min(1).default(5),
+  OBS_FULL_TABLE_SCAN_SEQ_MIN: Joi.number().integer().min(1).default(1_000),
+  OBS_FULL_TABLE_SCAN_RATIO: Joi.number().min(1).default(10),
 });

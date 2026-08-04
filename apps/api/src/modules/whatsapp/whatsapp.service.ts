@@ -17,6 +17,7 @@ import {
 import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithRequestContextAsync } from '../../observability/request-context';
 import type { WhatsappInboundJobPayload } from '../async/async.types';
 import { WhatsappInboundProducer } from '../async/producers/whatsapp-inbound.producer';
 import { AuditService } from '../audit/audit.service';
@@ -251,75 +252,78 @@ export class WhatsappService {
 
     // companyId exclusively from instance — ignore any payload.companyId
     const companyId = instance.companyId;
-    const eventName = this.extractEventName(payload) ?? 'unknown';
 
-    const externalEventId = extractExternalEventId(payload);
+    return runWithRequestContextAsync({ companyId }, async () => {
+      const eventName = this.extractEventName(payload) ?? 'unknown';
 
-    const webhookEvent = await this.registerWebhookEvent({
-      companyId,
-      instanceId: instance.id,
-      eventType: eventName,
-      externalEventId,
-      payload,
-    });
+      const externalEventId = extractExternalEventId(payload);
 
-    if (webhookEvent.duplicate) {
-      return { ok: true, duplicate: true };
-    }
+      const webhookEvent = await this.registerWebhookEvent({
+        companyId,
+        instanceId: instance.id,
+        eventType: eventName,
+        externalEventId,
+        payload,
+      });
 
-    const correlationId = newCorrelationId();
-
-    // 7.1-H — async path never falls back to sync (dual-path removed).
-    // Rollback: ASYNC_INBOUND_ENABLED=false → sync dispatch below.
-    if (this.asyncInboundEnabled) {
-      if (!this.inboundProducer) {
-        await this.markWebhookEnqueueError(
-          webhookEvent.id,
-          'INBOUND_PRODUCER_UNAVAILABLE',
-        );
-        throw new ServiceUnavailableException(
-          'Async inbound enabled but producer is unavailable',
-        );
+      if (webhookEvent.duplicate) {
+        return { ok: true, duplicate: true };
       }
 
-      try {
-        const { jobId } = await this.inboundProducer.enqueue({
-          v: 1,
-          companyId,
-          webhookEventId: webhookEvent.id,
-          instanceId: instance.id,
-          eventType: eventName,
-          correlationId,
-        });
-        return {
-          ok: true,
-          queued: true,
-          webhookEventId: webhookEvent.id,
-          correlationId,
-          jobId,
-        };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `inbound enqueue failed correlationId=${correlationId} webhookEventId=${webhookEvent.id}: ${message}`,
-        );
-        await this.markWebhookEnqueueError(
-          webhookEvent.id,
-          `ENQUEUE_FAILED: ${message}`.slice(0, 1000),
-        );
-        throw new ServiceUnavailableException(
-          'Failed to enqueue webhook for async processing',
-        );
-      }
-    }
+      const correlationId = newCorrelationId();
 
-    return this.dispatchWebhookEvent({
-      instance,
-      companyId,
-      eventName,
-      payload,
-      webhookEventId: webhookEvent.id,
-      correlationId,
+      // 7.1-H — async path never falls back to sync (dual-path removed).
+      // Rollback: ASYNC_INBOUND_ENABLED=false → sync dispatch below.
+      if (this.asyncInboundEnabled) {
+        if (!this.inboundProducer) {
+          await this.markWebhookEnqueueError(
+            webhookEvent.id,
+            'INBOUND_PRODUCER_UNAVAILABLE',
+          );
+          throw new ServiceUnavailableException(
+            'Async inbound enabled but producer is unavailable',
+          );
+        }
+
+        try {
+          const { jobId } = await this.inboundProducer.enqueue({
+            v: 1,
+            companyId,
+            webhookEventId: webhookEvent.id,
+            instanceId: instance.id,
+            eventType: eventName,
+            correlationId,
+          });
+          return {
+            ok: true,
+            queued: true,
+            webhookEventId: webhookEvent.id,
+            correlationId,
+            jobId,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `inbound enqueue failed correlationId=${correlationId} webhookEventId=${webhookEvent.id}: ${message}`,
+          );
+          await this.markWebhookEnqueueError(
+            webhookEvent.id,
+            `ENQUEUE_FAILED: ${message}`.slice(0, 1000),
+          );
+          throw new ServiceUnavailableException(
+            'Failed to enqueue webhook for async processing',
+          );
+        }
+      }
+
+      return this.dispatchWebhookEvent({
+        instance,
+        companyId,
+        eventName,
+        payload,
+        webhookEventId: webhookEvent.id,
+        correlationId,
+      });
     });
   }
 

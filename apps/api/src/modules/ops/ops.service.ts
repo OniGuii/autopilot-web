@@ -16,6 +16,9 @@ import {
   OBS_HIGH_LATENCY_MS_DEFAULT,
   OBS_HTTP_ERROR_MIN_SAMPLES_DEFAULT,
   OBS_QUEUE_BACKLOG_HIGH_DEFAULT,
+  OBS_SLOW_QUERY_ALERT_MIN_DEFAULT,
+  OBS_FULL_TABLE_SCAN_SEQ_MIN_DEFAULT,
+  OBS_FULL_TABLE_SCAN_RATIO_DEFAULT,
 } from '../../observability/observability.constants';
 import { EvolutionClient } from '../whatsapp/evolution.client';
 import { OUTBOUND_MESSAGE_STATUS } from '../whatsapp/outbound/message-status';
@@ -124,6 +127,9 @@ export class OpsService {
   private readonly highLatencyMs: number;
   private readonly queueBacklogHigh: number;
   private readonly httpErrorMinSamples: number;
+  private readonly slowQueryAlertMin: number;
+  private readonly fullTableScanSeqMin: number;
+  private readonly fullTableScanRatio: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -173,6 +179,18 @@ export class OpsService {
     this.httpErrorMinSamples = config.get<number>(
       'observability.httpErrorMinSamples',
       OBS_HTTP_ERROR_MIN_SAMPLES_DEFAULT,
+    );
+    this.slowQueryAlertMin = config.get<number>(
+      'observability.slowQueryAlertMin',
+      OBS_SLOW_QUERY_ALERT_MIN_DEFAULT,
+    );
+    this.fullTableScanSeqMin = config.get<number>(
+      'observability.fullTableScanSeqMin',
+      OBS_FULL_TABLE_SCAN_SEQ_MIN_DEFAULT,
+    );
+    this.fullTableScanRatio = config.get<number>(
+      'observability.fullTableScanRatio',
+      OBS_FULL_TABLE_SCAN_RATIO_DEFAULT,
     );
   }
 
@@ -596,11 +614,66 @@ export class OpsService {
       });
     }
 
+    const slowStats = this.prom?.getPrismaSlowWindowStats();
+    if (slowStats && slowStats.count >= this.slowQueryAlertMin) {
+      alerts.push({
+        code: 'SLOW_QUERY',
+        severity: 'warning',
+        message: `Prisma slow queries (≥${slowStats.thresholdMs}ms) in the last 15 minutes`,
+        count: slowStats.count,
+      });
+    }
+
+    const seqScanCount = await this.countConcerningSeqScans();
+    if (seqScanCount > 0) {
+      alerts.push({
+        code: 'FULL_TABLE_SCAN',
+        severity: 'warning',
+        message:
+          'Tenant tables show high sequential scan activity vs index scans',
+        count: seqScanCount,
+      });
+    }
+
     return {
       companyId,
       generatedAt: new Date().toISOString(),
       alerts,
     };
+  }
+
+  /**
+   * 8B — pg_stat_user_tables heuristic for FULL_TABLE_SCAN alert.
+   * Counts RLS-scoped tables where seq_scan is high and dominates idx_scan.
+   */
+  private async countConcerningSeqScans(): Promise<number> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ relname: string; seq_scan: bigint; idx_scan: bigint | null }>
+      >`
+        SELECT relname, seq_scan, idx_scan
+        FROM pg_stat_user_tables
+        WHERE schemaname = 'public'
+          AND relname = ANY(ARRAY[
+            'leads',
+            'conversations',
+            'messages',
+            'follow_ups',
+            'events',
+            'audit_logs',
+            'webhook_events',
+            'whatsapp_instances'
+          ]::text[])
+          AND seq_scan >= ${this.fullTableScanSeqMin}
+          AND (
+            COALESCE(idx_scan, 0) = 0
+            OR seq_scan::float / NULLIF(idx_scan, 0) >= ${this.fullTableScanRatio}
+          )
+      `;
+      return rows.length;
+    } catch {
+      return 0;
+    }
   }
 
   async getHealth(actor: CompanyActor) {

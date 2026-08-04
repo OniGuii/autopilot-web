@@ -216,6 +216,17 @@ export default () => {
         process.env.OBS_HTTP_ERROR_MIN_SAMPLES ?? '20',
         10,
       ),
+      slowQueryAlertMin: parseInt(
+        process.env.OBS_SLOW_QUERY_ALERT_MIN ?? '5',
+        10,
+      ),
+      fullTableScanSeqMin: parseInt(
+        process.env.OBS_FULL_TABLE_SCAN_SEQ_MIN ?? '1000',
+        10,
+      ),
+      fullTableScanRatio: parseFloat(
+        process.env.OBS_FULL_TABLE_SCAN_RATIO ?? '10',
+      ),
     },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {

@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FollowUpStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithRlsBypassAsync } from '../../prisma/rls-context';
 import { RedisService } from '../../shared/redis/redis.service';
 import { newCorrelationId } from '../whatsapp/correlation';
 import {
@@ -85,16 +86,18 @@ export class FollowUpDueScanner implements OnModuleInit, OnModuleDestroy {
         return { enqueued: 0, scanned: 0 };
       }
 
-      const due = await this.prisma.followUp.findMany({
-        where: {
-          deletedAt: null,
-          status: FollowUpStatus.SCHEDULED,
-          scheduledAt: { lte: new Date(), not: null },
-        },
-        select: { id: true, companyId: true },
-        orderBy: { scheduledAt: 'asc' },
-        take: this.batchSize,
-      });
+      const due = await runWithRlsBypassAsync(() =>
+        this.prisma.followUp.findMany({
+          where: {
+            deletedAt: null,
+            status: FollowUpStatus.SCHEDULED,
+            scheduledAt: { lte: new Date(), not: null },
+          },
+          select: { id: true, companyId: true },
+          orderBy: { scheduledAt: 'asc' },
+          take: this.batchSize,
+        }),
+      );
 
       let enqueued = 0;
       for (const row of due) {
