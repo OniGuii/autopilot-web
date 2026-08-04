@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { EvolutionChannelMetrics } from './evolution.channel-metrics';
 import { EvolutionClient } from './evolution.client';
 import { WhatsappInboundService } from './inbound/whatsapp-inbound.service';
 import { WhatsappDeliveryService } from './outbound/whatsapp-delivery.service';
@@ -16,8 +17,14 @@ import { WhatsappService } from './whatsapp.service';
     WhatsappInboundService,
     WhatsappSendService,
     WhatsappDeliveryService,
+    EvolutionChannelMetrics,
     EvolutionClient,
   ],
-  exports: [WhatsappService, WhatsappSendService],
+  exports: [
+    WhatsappService,
+    WhatsappSendService,
+    EvolutionClient,
+    EvolutionChannelMetrics,
+  ],
 })
 export class WhatsappModule {}

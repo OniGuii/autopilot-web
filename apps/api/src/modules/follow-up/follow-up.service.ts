@@ -23,6 +23,7 @@ import {
   AI_SUGGESTION_REJECTED,
   isAiFollowUpMetadata,
 } from '../ai/ai.constants';
+import { newCorrelationId } from '../whatsapp/correlation';
 import {
   FOLLOWUP_EXECUTING_TIMEOUT_MS,
   FOLLOWUP_MAX_ATTEMPTS,
@@ -40,6 +41,7 @@ type FollowUpMeta = {
   attemptCount?: number;
   lastError?: string;
   executingTimedOutAt?: string;
+  correlationId?: string;
 };
 
 const AUDIT_BODY_MAX = 2000;
@@ -571,6 +573,8 @@ export class FollowUpService {
 
     // P4-F1 — 409 without entering EXECUTING
     await this.whatsappSend.assertConnected(companyId);
+    // CH6 — circuit OPEN → 503 without EXECUTING
+    this.whatsappSend.assertChannelAvailable();
 
     const previousAttempts = this.getAttemptCount(existing);
     if (previousAttempts >= FOLLOWUP_MAX_ATTEMPTS) {
@@ -579,6 +583,7 @@ export class FollowUpService {
       );
     }
     const attempt = previousAttempts + 1;
+    const correlationId = newCorrelationId();
 
     const claimed = await this.prisma.followUp.updateMany({
       where: {
@@ -592,6 +597,7 @@ export class FollowUpService {
         metadata: {
           ...this.readMeta(existing),
           attemptCount: attempt,
+          correlationId,
         } satisfies FollowUpMeta,
         cancelReason: null,
       },
@@ -613,6 +619,7 @@ export class FollowUpService {
           after: {
             status: FollowUpStatus.EXECUTING,
             attempt,
+            correlationId,
           },
           ip: opts.meta?.ip,
           userAgent: opts.meta?.userAgent,
@@ -632,6 +639,7 @@ export class FollowUpService {
             source: FOLLOWUP_MESSAGE_SOURCE,
             followUpId: existing.id,
             attempt,
+            correlationId,
           },
         },
         opts.meta,
@@ -648,6 +656,7 @@ export class FollowUpService {
             metadata: {
               ...this.readMeta(existing),
               attemptCount: attempt,
+              correlationId,
             },
           },
         });
@@ -661,8 +670,12 @@ export class FollowUpService {
           before: {
             status: FollowUpStatus.EXECUTING,
             attempt,
+            correlationId,
           },
-          after: this.snapshot(updated),
+          after: {
+            ...(this.snapshot(updated) as Record<string, unknown>),
+            correlationId,
+          },
           ip: opts.meta?.ip,
           userAgent: opts.meta?.userAgent,
         });
@@ -685,6 +698,7 @@ export class FollowUpService {
             metadata: {
               ...this.readMeta(existing),
               attemptCount: attempt,
+              correlationId,
               lastError: errorMessage.slice(0, 1000),
             },
           },
@@ -699,8 +713,12 @@ export class FollowUpService {
           before: {
             status: FollowUpStatus.EXECUTING,
             attempt,
+            correlationId,
           },
-          after: this.snapshot(updated),
+          after: {
+            ...(this.snapshot(updated) as Record<string, unknown>),
+            correlationId,
+          },
           ip: opts.meta?.ip,
           userAgent: opts.meta?.userAgent,
         });
@@ -708,7 +726,7 @@ export class FollowUpService {
         return updated;
       });
 
-      // Surface original HTTP error when useful (e.g. 502), else 409 conflict-like FAILED
+      // Surface original HTTP error when useful (e.g. 502/503), else wrap
       if (error instanceof ConflictException) {
         throw error;
       }
@@ -719,6 +737,7 @@ export class FollowUpService {
           status: FollowUpStatus.FAILED,
           messageId,
           error: errorMessage,
+          correlationId,
         });
       }
       if (error instanceof HttpException) {
@@ -731,6 +750,7 @@ export class FollowUpService {
         status: FollowUpStatus.FAILED,
         messageId,
         error: errorMessage,
+        correlationId,
       });
     }
   }

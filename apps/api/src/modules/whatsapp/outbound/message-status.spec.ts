@@ -63,4 +63,19 @@ describe('outbound message status machine (P3-D2)', () => {
   it('documents PENDING stale operational window (P3-D3)', () => {
     expect(PENDING_STALE_MINUTES).toBe(5);
   });
+
+  it('allows FAILED → SENT for 6B echo heal (CH3)', () => {
+    expect(
+      canTransitionOutboundStatus(
+        OUTBOUND_MESSAGE_STATUS.FAILED,
+        OUTBOUND_MESSAGE_STATUS.SENT,
+      ),
+    ).toBe(true);
+    expect(
+      canTransitionOutboundStatus(
+        OUTBOUND_MESSAGE_STATUS.FAILED,
+        OUTBOUND_MESSAGE_STATUS.DELIVERED,
+      ),
+    ).toBe(false);
+  });
 });

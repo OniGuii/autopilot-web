@@ -108,6 +108,7 @@ describe('FollowUpService Phase 4', () => {
     };
 
     const whatsappSend = {
+      assertChannelAvailable: jest.fn(),
       assertConnected:
         opts?.connected === false
           ? jest
@@ -125,6 +126,7 @@ describe('FollowUpService Phase 4', () => {
           leadId: 'lead-1',
           externalMessageId: 'EXT_1',
           status: 'SENT',
+          correlationId: 'corr-fu',
         }),
     };
 
@@ -188,17 +190,19 @@ describe('FollowUpService Phase 4', () => {
     const result = await service.execute(actor, 'fu-1');
 
     expect(whatsappSend.assertConnected).toHaveBeenCalledWith(companyId);
+    expect(whatsappSend.assertChannelAvailable).toHaveBeenCalled();
     expect(whatsappSend.send).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({
         leadId: 'lead-1',
         conversationId: 'conv-1',
         body: 'Olá, ainda tem interesse?',
-        metadata: {
+        metadata: expect.objectContaining({
           source: 'followup',
           followUpId: 'fu-1',
           attempt: 1,
-        },
+          correlationId: expect.any(String),
+        }),
       }),
       undefined,
     );

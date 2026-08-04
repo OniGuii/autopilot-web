@@ -156,10 +156,27 @@ describe('OpsService', () => {
       }),
     };
 
+    const evolution = {
+      isStubMode: jest.fn().mockReturnValue(true),
+      getMetricsSnapshot: jest.fn().mockReturnValue({
+        evolutionCircuitState: 'CLOSED',
+        evolutionRequestsTotal: 0,
+        evolutionRetriesTotal: 0,
+        evolutionTimeoutsLast15m: 0,
+        evolutionLastErrorAt: null,
+        webhookInflight: 0,
+        webhookP95Ms: null,
+        webhookSlowLast15m: 0,
+        connectionFlaps: 0,
+        byResult: {},
+      }),
+    };
+
     const service = new OpsService(
       prisma as never,
       audit as never,
       config as never,
+      evolution as never,
     );
 
     // Patch redis check via prototype spy when needed
@@ -186,15 +203,20 @@ describe('OpsService', () => {
   it('returns operational metrics', async () => {
     const { service } = build();
     const metrics = await service.getMetrics(actor);
-    expect(metrics).toEqual({
-      whatsappConnected: true,
-      totalMessages: 10,
-      pendingMessages: 2,
-      failedMessages: 1,
-      scheduledFollowUps: 3,
-      overdueFollowUps: 1,
-      executedFollowUps: 5,
-    });
+    expect(metrics).toEqual(
+      expect.objectContaining({
+        whatsappConnected: true,
+        totalMessages: 10,
+        pendingMessages: 2,
+        failedMessages: 1,
+        scheduledFollowUps: 3,
+        overdueFollowUps: 1,
+        executedFollowUps: 5,
+        evolutionCircuitState: 'CLOSED',
+        evolutionTimeoutsLast15m: 0,
+        webhookInflight: 0,
+      }),
+    );
   });
 
   it('builds alerts when whatsapp disconnected and pending stale', async () => {
@@ -217,6 +239,9 @@ describe('OpsService', () => {
     expect(health.postgres).toBe('up');
     expect(health.redis).toBe('up');
     expect(health.whatsapp).toBe('up');
+    expect(health.evolution).toEqual(
+      expect.objectContaining({ circuit: 'CLOSED', stubMode: true }),
+    );
     expect(health.timestamp).toBeDefined();
   });
 

@@ -142,4 +142,72 @@ describe('WhatsappDeliveryService', () => {
       'WHATSAPP_MESSAGE_SENT',
     );
   });
+
+  it('heals FAILED → SENT via echo after UNCERTAIN_TIMEOUT (CH3)', async () => {
+    const failed = {
+      id: 'msg-failed',
+      status: OUTBOUND_MESSAGE_STATUS.FAILED,
+      sentAt: null,
+      conversationId: 'conv-1',
+      conversation: { leadId: 'lead-1' },
+      externalMessageId: null,
+      metadata: { correlationId: 'corr-heal' },
+    };
+
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(failed);
+
+    const prisma = {
+      message: {
+        findFirst,
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn(),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          message: { update: prisma.message.update },
+        }),
+      ),
+    };
+    const audits: unknown[] = [];
+    const audit = {
+      write: jest.fn(async (_t: unknown, input: unknown) => {
+        audits.push(input);
+        return { id: 'a' };
+      }),
+    };
+
+    const service = new WhatsappDeliveryService(
+      prisma as never,
+      audit as never,
+    );
+
+    const result = await service.healEchoRace(companyId, {
+      remotePhone: '5511987654321',
+      remoteJid: '5511987654321@s.whatsapp.net',
+      externalMessageId: 'ECHO_AFTER_TIMEOUT',
+      body: null,
+    });
+
+    expect(result.kind).toBe('healed');
+    expect(prisma.message.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: OUTBOUND_MESSAGE_STATUS.SENT,
+          failedAt: null,
+          errorMessage: null,
+        }),
+      }),
+    );
+    expect(audits.map((a) => (a as { action: string }).action)).toContain(
+      'WHATSAPP_MESSAGE_UNCERTAIN_RESOLVED',
+    );
+    expect(audits[0]).toEqual(
+      expect.objectContaining({
+        after: expect.objectContaining({ correlationId: 'corr-heal' }),
+      }),
+    );
+  });
 });

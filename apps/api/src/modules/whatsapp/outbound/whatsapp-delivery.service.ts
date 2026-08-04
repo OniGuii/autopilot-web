@@ -163,8 +163,9 @@ export class WhatsappDeliveryService {
   }
 
   /**
-   * P3-E1/E2 — Echo Protection heal race:
-   * fromMe upsert with unknown external id → attach to recent OUTBOUND PENDING/SENT.
+   * P3-E1/E2 + 6B CH3 — Echo Protection heal race:
+   * fromMe upsert with unknown external id → attach to recent OUTBOUND
+   * PENDING/SENT, or FAILED with null external id (UNCERTAIN_TIMEOUT).
    */
   async healEchoRace(
     companyId: string,
@@ -200,7 +201,11 @@ export class WhatsappDeliveryService {
         deletedAt: null,
         externalMessageId: null,
         status: {
-          in: [OUTBOUND_MESSAGE_STATUS.PENDING, OUTBOUND_MESSAGE_STATUS.SENT],
+          in: [
+            OUTBOUND_MESSAGE_STATUS.PENDING,
+            OUTBOUND_MESSAGE_STATUS.SENT,
+            OUTBOUND_MESSAGE_STATUS.FAILED,
+          ],
         },
         createdAt: { gte: since },
         conversation: {
@@ -217,6 +222,8 @@ export class WhatsappDeliveryService {
       return { kind: 'ignored' };
     }
 
+    const fromFailed = candidate.status === OUTBOUND_MESSAGE_STATUS.FAILED;
+    const correlationId = readCorrelationId(candidate.metadata);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.message.update({
@@ -226,21 +233,44 @@ export class WhatsappDeliveryService {
           status: OUTBOUND_MESSAGE_STATUS.SENT,
           sentAt: candidate.sentAt ?? now,
           errorMessage: null,
+          failedAt: null,
         },
       });
 
-      if (candidate.status === OUTBOUND_MESSAGE_STATUS.PENDING) {
+      if (fromFailed) {
+        await this.audit.write(tx, {
+          companyId,
+          actorUserId: null,
+          action: 'WHATSAPP_MESSAGE_UNCERTAIN_RESOLVED',
+          targetType: 'MESSAGE',
+          targetId: candidate.id,
+          before: {
+            status: OUTBOUND_MESSAGE_STATUS.FAILED,
+            correlationId,
+          },
+          after: {
+            status: OUTBOUND_MESSAGE_STATUS.SENT,
+            externalMessageId: echo.externalMessageId,
+            healedFromEcho: true,
+            correlationId,
+          },
+        });
+      } else if (candidate.status === OUTBOUND_MESSAGE_STATUS.PENDING) {
         await this.audit.write(tx, {
           companyId,
           actorUserId: null,
           action: 'WHATSAPP_MESSAGE_SENT',
           targetType: 'MESSAGE',
           targetId: candidate.id,
-          before: { status: OUTBOUND_MESSAGE_STATUS.PENDING },
+          before: {
+            status: OUTBOUND_MESSAGE_STATUS.PENDING,
+            correlationId,
+          },
           after: {
             status: OUTBOUND_MESSAGE_STATUS.SENT,
             externalMessageId: echo.externalMessageId,
             healedFromEcho: true,
+            correlationId,
           },
         });
       }
@@ -253,4 +283,17 @@ export class WhatsappDeliveryService {
       leadId: candidate.conversation.leadId,
     };
   }
+}
+
+function readCorrelationId(metadata: unknown): string | null {
+  if (
+    metadata &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata) &&
+    'correlationId' in metadata &&
+    typeof (metadata as { correlationId?: unknown }).correlationId === 'string'
+  ) {
+    return (metadata as { correlationId: string }).correlationId;
+  }
+  return null;
 }

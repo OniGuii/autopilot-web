@@ -81,12 +81,24 @@ describe('WhatsappService.handleWebhook (Phase 2)', () => {
       healEchoRace: jest.fn().mockResolvedValue({ kind: 'ignored' }),
     };
 
+    const channelMetrics = {
+      beginWebhook: jest.fn(),
+      endWebhook: jest.fn(),
+      recordWebhook: jest.fn(),
+      recordConnectionFlap: jest.fn(),
+    };
+    const config = {
+      get: jest.fn((_key: string, def?: unknown) => def),
+    };
+
     const service = new WhatsappService(
       prisma as never,
       audit as never,
       evolution as never,
       inbound as never,
       delivery as never,
+      channelMetrics as never,
+      config as never,
     );
 
     return { service, prisma, inbound, delivery, webhookEvents, instance };
