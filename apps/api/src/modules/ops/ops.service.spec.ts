@@ -218,6 +218,22 @@ describe('OpsService', () => {
       retriesTotal: 0,
       stalledTotal: 0,
       claimFailuresTotal: 0,
+      reconcileWorker:
+        opts?.redisOk === false
+          ? null
+          : {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0,
+            },
+      reconcile: {
+        runs: 0,
+        durationMs: null,
+        itemsChecked: 0,
+        itemsFlagged: 0,
+      },
     };
     const asyncMetrics = {
       snapshot: jest
@@ -276,6 +292,12 @@ describe('OpsService', () => {
           dlqDepth: 0,
           whatsappInbound: expect.objectContaining({ waiting: 0 }),
           followupScheduler: expect.objectContaining({ waiting: 0 }),
+          reconcileWorker: expect.objectContaining({ waiting: 0 }),
+          reconcile: expect.objectContaining({
+            runs: 0,
+            itemsChecked: 0,
+            itemsFlagged: 0,
+          }),
           retriesTotal: 0,
           stalledTotal: 0,
           claimFailuresTotal: 0,

@@ -124,4 +124,15 @@ export const envValidationSchema = Joi.object({
     .default(30_000),
   FOLLOWUP_SCHEDULER_SCAN_BATCH: Joi.number().integer().min(1).default(50),
   FOLLOWUP_SCHEDULER_BACKLOG_HIGH: Joi.number().integer().min(1).default(100),
+
+  /** 7.2B — Reconcile worker (default off). */
+  ASYNC_RECONCILE_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  RECONCILE_ATTEMPTS: Joi.number().integer().min(1).default(2),
+  RECONCILE_BACKOFF_MS: Joi.number().integer().min(1000).default(30_000),
+  RECONCILE_CONCURRENCY: Joi.number().integer().min(1).default(1),
+  RECONCILE_SCAN_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(30_000)
+    .default(5 * 60 * 1000),
+  RECONCILE_TAKE: Joi.number().integer().min(1).default(100),
 });

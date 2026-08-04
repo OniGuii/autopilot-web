@@ -56,6 +56,12 @@ export type OpsMetrics = {
       completed: number;
       failed: number;
     } | null;
+    reconcileWorker: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+    } | null;
     /** Depth; null when unavailable (never masked as 0). */
     dlqWhatsappInbound: number | null;
     dlqDepth: number | null;
@@ -64,6 +70,12 @@ export type OpsMetrics = {
     retriesTotal: number;
     stalledTotal: number;
     claimFailuresTotal: number;
+    reconcile: {
+      runs: number;
+      durationMs: number | null;
+      itemsChecked: number;
+      itemsFlagged: number;
+    };
   };
 };
 
@@ -227,6 +239,14 @@ export class OpsService {
               failed: queues.followupScheduler.failed,
             }
           : null,
+        reconcileWorker: queues.reconcileWorker
+          ? {
+              waiting: queues.reconcileWorker.waiting,
+              active: queues.reconcileWorker.active,
+              completed: queues.reconcileWorker.completed,
+              failed: queues.reconcileWorker.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
@@ -234,6 +254,7 @@ export class OpsService {
         retriesTotal: queues.retriesTotal,
         stalledTotal: queues.stalledTotal,
         claimFailuresTotal: queues.claimFailuresTotal,
+        reconcile: queues.reconcile,
       },
     };
   }
@@ -480,6 +501,14 @@ export class OpsService {
               failed: queues.followupScheduler.failed,
             }
           : null,
+        reconcileWorker: queues.reconcileWorker
+          ? {
+              waiting: queues.reconcileWorker.waiting,
+              active: queues.reconcileWorker.active,
+              completed: queues.reconcileWorker.completed,
+              failed: queues.reconcileWorker.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
@@ -487,6 +516,7 @@ export class OpsService {
         retriesTotal: queues.retriesTotal,
         stalledTotal: queues.stalledTotal,
         claimFailuresTotal: queues.claimFailuresTotal,
+        reconcile: queues.reconcile,
       },
       evolution: {
         circuit: channel.evolutionCircuitState,
@@ -630,9 +660,12 @@ export class OpsService {
     actor: CompanyActor,
     apply: boolean,
     meta?: RequestMeta,
+    take?: number,
   ): Promise<ReconcileResult> {
     const companyId = actor.cid;
     const staleBefore = new Date(Date.now() - OPS_STALE_MS);
+    const limit =
+      typeof take === 'number' && take >= 1 ? take : this.reconcileTake;
 
     const matched = await this.prisma.message.findMany({
       where: {
@@ -642,7 +675,7 @@ export class OpsService {
         createdAt: { lt: staleBefore },
       },
       select: { id: true, status: true },
-      take: this.reconcileTake,
+      take: limit,
       orderBy: { createdAt: 'asc' },
     });
 
