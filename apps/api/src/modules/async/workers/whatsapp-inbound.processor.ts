@@ -7,6 +7,8 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
+import { withBullJobContext } from '../../../observability/bull-job-context';
+import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
 import { AsyncMetricsService } from '../async-metrics.service';
 import {
   ASYNC_LOCK_DURATION_MS_DEFAULT,
@@ -32,6 +34,7 @@ export class WhatsappInboundProcessor
     private readonly whatsapp: WhatsappService,
     private readonly dlq: DlqService,
     private readonly metrics: AsyncMetricsService,
+    private readonly prom: PrometheusMetricsService,
     config: ConfigService,
   ) {
     super();
@@ -68,26 +71,30 @@ export class WhatsappInboundProcessor
     skipped?: boolean;
     reason?: string;
   }> {
-    const started = Date.now();
-    const data = job.data;
-    this.logger.debug(
-      `process inbound jobId=${job.id} correlationId=${data.correlationId} webhookEventId=${data.webhookEventId}`,
-    );
+    return withBullJobContext(QUEUE_WHATSAPP_INBOUND, job, async () => {
+      const started = Date.now();
+      const data = job.data;
+      this.logger.debug(
+        `process inbound jobId=${job.id} correlationId=${data.correlationId} webhookEventId=${data.webhookEventId}`,
+      );
 
-    try {
-      const result = await this.whatsapp.processQueuedWebhook(data);
-      if (result.reason === 'CLAIM_FAILED') {
-        this.metrics.recordClaimFailure();
+      try {
+        const result = await this.whatsapp.processQueuedWebhook(data);
+        if (result.reason === 'CLAIM_FAILED') {
+          this.metrics.recordClaimFailure();
+        }
+        return {
+          ok: true,
+          correlationId: data.correlationId,
+          skipped: Boolean(result.ignored),
+          reason: result.reason,
+        };
+      } finally {
+        const durationMs = Date.now() - started;
+        this.metrics.recordProcessingDuration(durationMs);
+        this.prom.recordQueueJobDuration(QUEUE_WHATSAPP_INBOUND, durationMs);
       }
-      return {
-        ok: true,
-        correlationId: data.correlationId,
-        skipped: Boolean(result.ignored),
-        reason: result.reason,
-      };
-    } finally {
-      this.metrics.recordProcessingDuration(Date.now() - started);
-    }
+    });
   }
 
   @OnWorkerEvent('failed')

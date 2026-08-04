@@ -22,6 +22,7 @@ describe('FollowUpSchedulerProcessor', () => {
     const processor = new FollowUpSchedulerProcessor(
       followUps as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       config as never,
     );
 
@@ -52,6 +53,7 @@ describe('FollowUpSchedulerProcessor', () => {
     const processor = new FollowUpSchedulerProcessor(
       followUps as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       config as never,
     );
 
@@ -78,6 +80,7 @@ describe('FollowUpSchedulerProcessor', () => {
     const processor = new FollowUpSchedulerProcessor(
       followUps as never,
       metrics as never,
+      { recordQueueJobDuration: jest.fn() } as never,
       config as never,
     );
 

@@ -1,10 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { createPrismaMetricsExtension } from '../observability/prisma-metrics.extension';
 import { createSoftDeleteExtension } from './extensions/soft-delete.extension';
 import { createTenantExtension } from './extensions/tenant.extension';
 
 function createExtendedClient() {
   return new PrismaClient()
+    .$extends(createPrismaMetricsExtension())
     .$extends(
       createSoftDeleteExtension({
         filterDeleted: true,
@@ -36,7 +38,7 @@ function buildPrismaService(): PrismaServiceInstance {
 }
 
 /**
- * Nest injectable Prisma client with soft-delete + tenant extensions.
+ * Nest injectable Prisma client with soft-delete + tenant + metrics extensions.
  * Typed as PrismaClient for existing services; runtime is extended.
  */
 @Injectable()

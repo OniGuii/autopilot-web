@@ -197,6 +197,26 @@ export default () => {
         process.env.AI_FAILURE_RATE_THRESHOLD ?? '0.5',
       ),
     },
+    /** Fase 8A — Observability Foundation */
+    observability: {
+      otelEnabled: (process.env.OTEL_ENABLED ?? 'false') === 'true',
+      metricsEnabled: (process.env.METRICS_ENABLED ?? 'true') === 'true',
+      serviceName: process.env.OTEL_SERVICE_NAME ?? 'autopilot-api',
+      logFormat: process.env.LOG_FORMAT ?? undefined,
+      prismaSlowMs: parseInt(process.env.OBS_PRISMA_SLOW_MS ?? '500', 10),
+      highErrorRateThreshold: parseFloat(
+        process.env.OBS_HIGH_ERROR_RATE_THRESHOLD ?? '0.05',
+      ),
+      highLatencyMs: parseInt(process.env.OBS_HIGH_LATENCY_MS ?? '2000', 10),
+      queueBacklogHigh: parseInt(
+        process.env.OBS_QUEUE_BACKLOG_HIGH ?? '100',
+        10,
+      ),
+      httpErrorMinSamples: parseInt(
+        process.env.OBS_HTTP_ERROR_MIN_SAMPLES ?? '20',
+        10,
+      ),
+    },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {
       accessSecret: process.env.JWT_ACCESS_SECRET,

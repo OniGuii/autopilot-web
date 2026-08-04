@@ -149,4 +149,16 @@ export const envValidationSchema = Joi.object({
   AI_SUGGEST_BACKLOG_HIGH: Joi.number().integer().min(1).default(50),
   AI_FAILURE_RATE_MIN_SAMPLES: Joi.number().integer().min(1).default(10),
   AI_FAILURE_RATE_THRESHOLD: Joi.number().min(0).max(1).default(0.5),
+
+  /** 8A — Observability Foundation */
+  OTEL_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  OTEL_SERVICE_NAME: Joi.string().default('autopilot-api'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: Joi.string().allow('').optional(),
+  METRICS_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  LOG_FORMAT: Joi.string().valid('json', 'pretty').optional(),
+  OBS_PRISMA_SLOW_MS: Joi.number().integer().min(50).default(500),
+  OBS_HIGH_ERROR_RATE_THRESHOLD: Joi.number().min(0).max(1).default(0.05),
+  OBS_HIGH_LATENCY_MS: Joi.number().integer().min(100).default(2_000),
+  OBS_QUEUE_BACKLOG_HIGH: Joi.number().integer().min(1).default(100),
+  OBS_HTTP_ERROR_MIN_SAMPLES: Joi.number().integer().min(1).default(20),
 });

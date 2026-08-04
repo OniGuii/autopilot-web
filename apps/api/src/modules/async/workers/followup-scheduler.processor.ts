@@ -12,6 +12,8 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
 import { FollowUpService } from '../../follow-up/follow-up.service';
+import { withBullJobContext } from '../../../observability/bull-job-context';
+import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
 import { AsyncMetricsService } from '../async-metrics.service';
 import {
   ASYNC_LOCK_DURATION_MS_DEFAULT,
@@ -35,6 +37,7 @@ export class FollowUpSchedulerProcessor
   constructor(
     private readonly followUps: FollowUpService,
     private readonly metrics: AsyncMetricsService,
+    private readonly prom: PrometheusMetricsService,
     config: ConfigService,
   ) {
     super();
@@ -70,40 +73,44 @@ export class FollowUpSchedulerProcessor
     outcome: string;
     correlationId: string;
   }> {
-    const started = Date.now();
-    const data = job.data;
-    this.logger.debug(
-      `process followup jobId=${job.id} followUpId=${data.followUpId} correlationId=${data.correlationId}`,
-    );
+    return withBullJobContext(QUEUE_FOLLOWUP_SCHEDULER, job, async () => {
+      const started = Date.now();
+      const data = job.data;
+      this.logger.debug(
+        `process followup jobId=${job.id} followUpId=${data.followUpId} correlationId=${data.correlationId}`,
+      );
 
-    try {
-      const result = await this.followUps.executeDue({
-        companyId: data.companyId,
-        followUpId: data.followUpId,
-        correlationId: data.correlationId,
-      });
+      try {
+        const result = await this.followUps.executeDue({
+          companyId: data.companyId,
+          followUpId: data.followUpId,
+          correlationId: data.correlationId,
+        });
 
-      if (result.outcome === 'skipped_claim') {
-        this.metrics.recordClaimFailure();
+        if (result.outcome === 'skipped_claim') {
+          this.metrics.recordClaimFailure();
+        }
+
+        return {
+          ok: true,
+          outcome: result.outcome,
+          correlationId: result.correlationId,
+        };
+      } catch (error) {
+        if (isNonRetryableFollowUpError(error)) {
+          throw new UnrecoverableError(
+            error instanceof Error
+              ? error.message
+              : 'non-retryable followup error',
+          );
+        }
+        throw error;
+      } finally {
+        const durationMs = Date.now() - started;
+        this.metrics.recordProcessingDuration(durationMs);
+        this.prom.recordQueueJobDuration(QUEUE_FOLLOWUP_SCHEDULER, durationMs);
       }
-
-      return {
-        ok: true,
-        outcome: result.outcome,
-        correlationId: result.correlationId,
-      };
-    } catch (error) {
-      if (isNonRetryableFollowUpError(error)) {
-        throw new UnrecoverableError(
-          error instanceof Error
-            ? error.message
-            : 'non-retryable followup error',
-        );
-      }
-      throw error;
-    } finally {
-      this.metrics.recordProcessingDuration(Date.now() - started);
-    }
+    });
   }
 
   @OnWorkerEvent('failed')

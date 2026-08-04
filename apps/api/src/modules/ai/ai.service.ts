@@ -17,6 +17,7 @@ import { RedisService } from '../../shared/redis/redis.service';
 import { AiSuggestionProducer } from '../async/producers/ai-suggestion.producer';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { PrometheusMetricsService } from '../../observability/prometheus-metrics.service';
 import { newCorrelationId } from '../whatsapp/correlation';
 import {
   AI_CONTEXT_MAX_CHARS,
@@ -96,6 +97,8 @@ export class AiService {
     private readonly config: ConfigService,
     @Optional()
     private readonly aiSuggestionProducer?: AiSuggestionProducer,
+    @Optional()
+    private readonly prom?: PrometheusMetricsService,
   ) {
     this.asyncAiEnabled =
       this.config.get<boolean>('async.aiEnabled', false) === true;
@@ -216,6 +219,7 @@ export class AiService {
       throw new ForbiddenException('Token sem companyId (cid)');
     }
 
+    const started = Date.now();
     const conversation = await this.assertConversationReady(
       companyId,
       conversationId,
@@ -345,6 +349,12 @@ export class AiService {
         });
 
         return created;
+      });
+
+      this.prom?.recordAiSuccess(Date.now() - started, {
+        promptTokens: metadata.promptTokens,
+        completionTokens: metadata.completionTokens,
+        totalTokens: metadata.totalTokens,
       });
 
       return {

@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { MessageDirection, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
 import { AuditService } from '../../audit/audit.service';
 import {
   auditActionForStatus,
@@ -39,6 +40,7 @@ export class WhatsappDeliveryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() private readonly prom?: PrometheusMetricsService,
   ) {}
 
   async applyDeliveryUpdate(
@@ -98,6 +100,12 @@ export class WhatsappDeliveryService {
     }
     if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.DELIVERED) {
       data.deliveredAt = update.occurredAt;
+      const sentAt = message.sentAt ?? message.createdAt;
+      if (sentAt) {
+        const latencyMs =
+          update.occurredAt.getTime() - new Date(sentAt).getTime();
+        this.prom?.recordWhatsappDeliveryLatency(latencyMs);
+      }
     }
     if (update.targetStatus === OUTBOUND_MESSAGE_STATUS.READ) {
       data.readAt = update.occurredAt;

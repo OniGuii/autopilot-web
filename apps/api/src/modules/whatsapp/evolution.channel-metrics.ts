@@ -12,6 +12,7 @@ export class EvolutionChannelMetrics {
   private retriesTotal = 0;
   private byResult = new Map<string, number>();
   private timeouts: number[] = [];
+  private requestDurations: TimedSample[] = [];
   private webhookDurations: TimedSample[] = [];
   private webhookSlow: number[] = [];
   private webhookInflight = 0;
@@ -19,10 +20,18 @@ export class EvolutionChannelMetrics {
   private lastErrorAt: number | null = null;
   private circuitState: CircuitState = 'CLOSED';
 
-  recordRequest(result: string, durationMs: number, errorClass?: EvolutionErrorClass): void {
+  recordRequest(
+    result: string,
+    durationMs: number,
+    errorClass?: EvolutionErrorClass,
+  ): void {
     this.requestsTotal += 1;
     const key = result;
     this.byResult.set(key, (this.byResult.get(key) ?? 0) + 1);
+    if (Number.isFinite(durationMs) && durationMs >= 0) {
+      this.requestDurations.push({ at: Date.now(), ms: durationMs });
+      this.trimSamples(this.requestDurations);
+    }
     if (errorClass === 'TIMEOUT' || result === 'timeout') {
       this.timeouts.push(Date.now());
       this.trim(this.timeouts);
@@ -30,7 +39,6 @@ export class EvolutionChannelMetrics {
     if (errorClass && errorClass !== 'CIRCUIT_OPEN') {
       this.lastErrorAt = Date.now();
     }
-    void durationMs;
   }
 
   recordRetry(): void {
@@ -72,6 +80,7 @@ export class EvolutionChannelMetrics {
     evolutionLastErrorAt: string | null;
     webhookInflight: number;
     webhookP95Ms: number | null;
+    requestP95Ms: number | null;
     webhookSlowLast15m: number;
     connectionFlaps: number;
     byResult: Record<string, number>;
@@ -90,6 +99,10 @@ export class EvolutionChannelMetrics {
         this.webhookDurations.map((s) => s.ms),
         0.95,
       ),
+      requestP95Ms: this.percentile(
+        this.requestDurations.map((s) => s.ms),
+        0.95,
+      ),
       webhookSlowLast15m: this.countSince(this.webhookSlow, 15 * 60_000),
       connectionFlaps: this.connectionFlaps,
       byResult: Object.fromEntries(this.byResult.entries()),
@@ -103,14 +116,14 @@ export class EvolutionChannelMetrics {
 
   private trim(timestamps: number[]): void {
     const cutoff = Date.now() - 15 * 60_000;
-    while (timestamps.length && timestamps[0]! < cutoff) {
+    while (timestamps.length && timestamps[0] < cutoff) {
       timestamps.shift();
     }
   }
 
   private trimSamples(samples: TimedSample[]): void {
     const cutoff = Date.now() - 15 * 60_000;
-    while (samples.length && samples[0]!.at < cutoff) {
+    while (samples.length && samples[0].at < cutoff) {
       samples.shift();
     }
     if (samples.length > 500) {
