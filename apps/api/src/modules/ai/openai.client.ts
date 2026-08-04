@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AI_SUGGEST_TIMEOUT_MS_DEFAULT } from '../async/async.constants';
 import {
   AI_MAX_COMPLETION_TOKENS,
   AI_OPENAI_TIMEOUT_MS,
@@ -45,7 +46,9 @@ export class OpenAiClient {
    * Chat Completions. In test env without key, returns a deterministic stub.
    * Outside test without key → 503.
    */
-  async chatCompletion(messages: OpenAiChatMessage[]): Promise<OpenAiChatResult> {
+  async chatCompletion(
+    messages: OpenAiChatMessage[],
+  ): Promise<OpenAiChatResult> {
     const model = this.getModel();
     const apiKey = this.config.get<string>('openai.apiKey')?.trim();
     const nodeEnv = this.config.get<string>('nodeEnv', 'development');
@@ -67,28 +70,37 @@ export class OpenAiClient {
       throw new ServiceUnavailableException('OpenAI API key is not configured');
     }
 
+    const timeoutMs = this.config.get<number>(
+      'async.aiSuggestTimeoutMs',
+      AI_OPENAI_TIMEOUT_MS ?? AI_SUGGEST_TIMEOUT_MS_DEFAULT,
+    );
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), AI_OPENAI_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+      const response = await fetch(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: AI_TEMPERATURE,
+            max_tokens: AI_MAX_COMPLETION_TOKENS,
+          }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: AI_TEMPERATURE,
-          max_tokens: AI_MAX_COMPLETION_TOKENS,
-        }),
-        signal: controller.signal,
-      });
+      );
 
       if (!response.ok) {
         const text = await response.text();
-        this.logger.warn(`OpenAI error ${response.status}: ${text.slice(0, 300)}`);
+        this.logger.warn(
+          `OpenAI error ${response.status}: ${text.slice(0, 300)}`,
+        );
         throw new ServiceUnavailableException(
           `OpenAI request failed (${response.status})`,
         );

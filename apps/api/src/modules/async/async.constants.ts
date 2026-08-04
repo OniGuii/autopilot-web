@@ -12,9 +12,13 @@ export const QUEUE_FOLLOWUP_SCHEDULER = 'followup-scheduler';
 /** 7.2B — operational reconcile */
 export const QUEUE_RECONCILE_WORKER = 'reconcile-worker';
 
+/** 7.2C — AI suggestion generation */
+export const QUEUE_AI_SUGGESTIONS = 'ai-suggestions';
+
 export const WHATSAPP_INBOUND_JOB_NAME = 'process-webhook';
 export const FOLLOWUP_SCHEDULER_JOB_NAME = 'execute-due-followup';
 export const RECONCILE_CYCLE_JOB_NAME = 'reconcile-cycle';
+export const AI_SUGGESTION_JOB_NAME = 'generate-suggestion';
 
 export const WHATSAPP_INBOUND_ATTEMPTS_DEFAULT = 5;
 export const WHATSAPP_INBOUND_BACKOFF_MS_DEFAULT = 2_000;
@@ -53,6 +57,19 @@ export const RECONCILE_CONCURRENCY_DEFAULT = 1;
 export const RECONCILE_SCAN_INTERVAL_MS_DEFAULT = 5 * 60 * 1000;
 export const RECONCILE_TAKE_DEFAULT = 100;
 
+export const AI_SUGGEST_ATTEMPTS_DEFAULT = 3;
+export const AI_SUGGEST_BACKOFF_MS_DEFAULT = 3_000;
+export const AI_SUGGEST_CONCURRENCY_DEFAULT = 2;
+/** OpenAI / job soft timeout (ms). */
+export const AI_SUGGEST_TIMEOUT_MS_DEFAULT = 25_000;
+/** Bull worker lock — must exceed OpenAI timeout + buffer. */
+export const AI_SUGGEST_LOCK_DURATION_MS_DEFAULT = 90_000;
+export const AI_SUGGEST_BACKLOG_HIGH_DEFAULT = 50;
+/** Min samples before AI_GENERATION_FAILURE_RATE fires. */
+export const AI_FAILURE_RATE_MIN_SAMPLES_DEFAULT = 10;
+/** Failure rate threshold (0–1). */
+export const AI_FAILURE_RATE_THRESHOLD_DEFAULT = 0.5;
+
 /** Resolve concurrency at module load (decorator options are static). */
 export function resolveQueueConcurrency(): number {
   const raw =
@@ -78,4 +95,22 @@ export function resolveReconcileConcurrency(): number {
     process.env.RECONCILE_CONCURRENCY ?? String(RECONCILE_CONCURRENCY_DEFAULT);
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n >= 1 ? n : RECONCILE_CONCURRENCY_DEFAULT;
+}
+
+export function resolveAiSuggestConcurrency(): number {
+  const raw =
+    process.env.AI_SUGGEST_CONCURRENCY ??
+    String(AI_SUGGEST_CONCURRENCY_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : AI_SUGGEST_CONCURRENCY_DEFAULT;
+}
+
+export function resolveAiSuggestLockDurationMs(): number {
+  const raw =
+    process.env.AI_SUGGEST_LOCK_DURATION_MS ??
+    String(AI_SUGGEST_LOCK_DURATION_MS_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 5_000
+    ? n
+    : AI_SUGGEST_LOCK_DURATION_MS_DEFAULT;
 }

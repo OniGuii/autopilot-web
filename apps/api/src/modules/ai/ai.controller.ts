@@ -33,7 +33,7 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Gera sugestão de resposta via IA e persiste como FollowUp SUGGESTED (AI_REPLY)',
+      'Gera sugestão de resposta via IA e persiste como FollowUp SUGGESTED (AI_REPLY). Com ASYNC_AI_ENABLED=true retorna accepted + jobId.',
   })
   suggest(
     @CurrentUser() user: AuthenticatedUser,

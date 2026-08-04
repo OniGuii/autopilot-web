@@ -62,6 +62,12 @@ export type OpsMetrics = {
       completed: number;
       failed: number;
     } | null;
+    aiSuggestions: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+    } | null;
     /** Depth; null when unavailable (never masked as 0). */
     dlqWhatsappInbound: number | null;
     dlqDepth: number | null;
@@ -75,6 +81,11 @@ export type OpsMetrics = {
       durationMs: number | null;
       itemsChecked: number;
       itemsFlagged: number;
+    };
+    ai: {
+      generated: number;
+      failed: number;
+      avgDuration: number | null;
     };
   };
 };
@@ -99,6 +110,9 @@ export class OpsService {
   private readonly receivedStaleMs: number;
   private readonly dlqStaleMs: number;
   private readonly followupBacklogHigh: number;
+  private readonly aiSuggestBacklogHigh: number;
+  private readonly aiFailureRateMinSamples: number;
+  private readonly aiFailureRateThreshold: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -119,6 +133,18 @@ export class OpsService {
     this.followupBacklogHigh = config.get<number>(
       'async.followupBacklogHigh',
       100,
+    );
+    this.aiSuggestBacklogHigh = config.get<number>(
+      'async.aiSuggestBacklogHigh',
+      50,
+    );
+    this.aiFailureRateMinSamples = config.get<number>(
+      'async.aiFailureRateMinSamples',
+      10,
+    );
+    this.aiFailureRateThreshold = config.get<number>(
+      'async.aiFailureRateThreshold',
+      0.5,
     );
   }
 
@@ -247,6 +273,14 @@ export class OpsService {
               failed: queues.reconcileWorker.failed,
             }
           : null,
+        aiSuggestions: queues.aiSuggestions
+          ? {
+              waiting: queues.aiSuggestions.waiting,
+              active: queues.aiSuggestions.active,
+              completed: queues.aiSuggestions.completed,
+              failed: queues.aiSuggestions.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
@@ -255,6 +289,7 @@ export class OpsService {
         stalledTotal: queues.stalledTotal,
         claimFailuresTotal: queues.claimFailuresTotal,
         reconcile: queues.reconcile,
+        ai: queues.ai ?? { generated: 0, failed: 0, avgDuration: null },
       },
     };
   }
@@ -451,6 +486,34 @@ export class OpsService {
       });
     }
 
+    const aiWaiting = metrics.queues.aiSuggestions?.waiting;
+    if (
+      typeof aiWaiting === 'number' &&
+      aiWaiting >= this.aiSuggestBacklogHigh
+    ) {
+      alerts.push({
+        code: 'AI_QUEUE_BACKLOG_HIGH',
+        severity: 'warning',
+        message: 'ai-suggestions waiting backlog is high',
+        count: aiWaiting,
+      });
+    }
+
+    const aiGenerated = metrics.queues.ai?.generated ?? 0;
+    const aiFailed = metrics.queues.ai?.failed ?? 0;
+    const aiTotal = aiGenerated + aiFailed;
+    if (
+      aiTotal >= this.aiFailureRateMinSamples &&
+      aiFailed / aiTotal >= this.aiFailureRateThreshold
+    ) {
+      alerts.push({
+        code: 'AI_GENERATION_FAILURE_RATE',
+        severity: 'warning',
+        message: 'AI suggestion generation failure rate is high',
+        count: Math.round((aiFailed / aiTotal) * 100),
+      });
+    }
+
     return {
       companyId,
       generatedAt: new Date().toISOString(),
@@ -509,6 +572,14 @@ export class OpsService {
               failed: queues.reconcileWorker.failed,
             }
           : null,
+        aiSuggestions: queues.aiSuggestions
+          ? {
+              waiting: queues.aiSuggestions.waiting,
+              active: queues.aiSuggestions.active,
+              completed: queues.aiSuggestions.completed,
+              failed: queues.aiSuggestions.failed,
+            }
+          : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
         dlqDepth: queues.dlq?.depth ?? queues.dlqWhatsappInbound,
         oldestDlqAgeMs: queues.dlq?.oldestAgeMs ?? null,
@@ -517,6 +588,7 @@ export class OpsService {
         stalledTotal: queues.stalledTotal,
         claimFailuresTotal: queues.claimFailuresTotal,
         reconcile: queues.reconcile,
+        ai: queues.ai ?? { generated: 0, failed: 0, avgDuration: null },
       },
       evolution: {
         circuit: channel.evolutionCircuitState,

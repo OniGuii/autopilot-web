@@ -26,6 +26,18 @@ export type ReconcileCycleJobPayload = {
   take: number;
 };
 
+export type AiSuggestionJobPayload = {
+  v: 1;
+  companyId: string;
+  conversationId: string;
+  actorUserId: string;
+  correlationId: string;
+  tone?: 'professional' | 'friendly' | 'concise';
+  instruction?: string;
+  ip?: string;
+  userAgent?: string;
+};
+
 export type DlqJobPayload = {
   v: 1;
   originalQueue: string;

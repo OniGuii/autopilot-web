@@ -49,6 +49,8 @@ describe('AiService', () => {
     openaiImpl?: jest.Mock;
     /** When true, second tryAcquireLock returns null (lock held). */
     lockBusyAfterFirst?: boolean;
+    asyncAiEnabled?: boolean;
+    enqueueImpl?: jest.Mock;
   }) {
     const audits: unknown[] = [];
     let countCalls = 0;
@@ -140,11 +142,27 @@ describe('AiService', () => {
       }),
     };
 
+    const producer = {
+      enqueue:
+        opts?.enqueueImpl ??
+        jest.fn().mockResolvedValue({
+          jobId: `ai:suggest:${companyId}:${conversationId}`,
+          deduped: false,
+        }),
+    };
+
     const service = new AiService(
       prisma as never,
       audit,
       openai as never,
       redis as never,
+      {
+        get: jest.fn((key: string, def?: unknown) => {
+          if (key === 'async.aiEnabled') return opts?.asyncAiEnabled === true;
+          return def;
+        }),
+      } as never,
+      opts?.asyncAiEnabled ? (producer as never) : undefined,
     );
 
     return {
@@ -153,6 +171,7 @@ describe('AiService', () => {
       audit,
       openai,
       redis,
+      producer,
       audits,
       countCalls: () => countCalls,
     };
@@ -168,8 +187,10 @@ describe('AiService', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(result.followUpId).toBe('fu-ai-1');
-    expect(result.suggestion).toContain('Olá');
+    expect('followUpId' in result && result.followUpId).toBe('fu-ai-1');
+    expect('suggestion' in result && result.suggestion).toEqual(
+      expect.stringContaining('Olá'),
+    );
     expect(prisma.followUp.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -299,5 +320,63 @@ describe('AiService', () => {
     await expect(
       service.suggestForConversation(actor, conversationId, {}),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('com ASYNC_AI_ENABLED enfileira e retorna accepted (sem OpenAI sync)', async () => {
+    const { service, openai, producer, prisma } = build({
+      asyncAiEnabled: true,
+    });
+
+    const result = await service.suggestForConversation(actor, conversationId, {
+      tone: 'friendly',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        accepted: true,
+        conversationId,
+        jobId: `ai:suggest:${companyId}:${conversationId}`,
+      }),
+    );
+    expect(producer.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId,
+        conversationId,
+        actorUserId: 'user-1',
+        tone: 'friendly',
+      }),
+    );
+    expect(openai.chatCompletion).not.toHaveBeenCalled();
+    expect(prisma.followUp.create).not.toHaveBeenCalled();
+  });
+
+  it('com ASYNC_AI_ENABLED dedupe → ConflictException', async () => {
+    const { service } = build({
+      asyncAiEnabled: true,
+      enqueueImpl: jest.fn().mockResolvedValue({
+        jobId: `ai:suggest:${companyId}:${conversationId}`,
+        deduped: true,
+      }),
+    });
+
+    await expect(
+      service.suggestForConversation(actor, conversationId, {}),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('processSuggestJob gera FollowUp mesmo com flag async on', async () => {
+    const { service, openai, prisma } = build({ asyncAiEnabled: true });
+
+    const result = await service.processSuggestJob({
+      companyId,
+      actorUserId: 'user-1',
+      conversationId,
+      dto: {},
+    });
+
+    expect(result.followUpId).toBe('fu-ai-1');
+    expect(openai.chatCompletion).toHaveBeenCalled();
+    expect(prisma.followUp.create).toHaveBeenCalled();
   });
 });

@@ -166,6 +166,36 @@ export default () => {
         process.env.RECONCILE_TAKE ?? process.env.OPS_RECONCILE_TAKE ?? '100',
         10,
       ),
+      /** 7.2C — AI suggestion worker (default off = sync suggest). */
+      aiEnabled: (process.env.ASYNC_AI_ENABLED ?? 'false') === 'true',
+      aiSuggestAttempts: parseInt(process.env.AI_SUGGEST_ATTEMPTS ?? '3', 10),
+      aiSuggestBackoffMs: parseInt(
+        process.env.AI_SUGGEST_BACKOFF_MS ?? '3000',
+        10,
+      ),
+      aiSuggestConcurrency: parseInt(
+        process.env.AI_SUGGEST_CONCURRENCY ?? '2',
+        10,
+      ),
+      aiSuggestTimeoutMs: parseInt(
+        process.env.AI_SUGGEST_TIMEOUT_MS ?? '25000',
+        10,
+      ),
+      aiSuggestLockDurationMs: parseInt(
+        process.env.AI_SUGGEST_LOCK_DURATION_MS ?? '90000',
+        10,
+      ),
+      aiSuggestBacklogHigh: parseInt(
+        process.env.AI_SUGGEST_BACKLOG_HIGH ?? '50',
+        10,
+      ),
+      aiFailureRateMinSamples: parseInt(
+        process.env.AI_FAILURE_RATE_MIN_SAMPLES ?? '10',
+        10,
+      ),
+      aiFailureRateThreshold: parseFloat(
+        process.env.AI_FAILURE_RATE_THRESHOLD ?? '0.5',
+      ),
     },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {

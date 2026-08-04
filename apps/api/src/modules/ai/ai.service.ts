@@ -7,17 +7,17 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import {
-  Channel,
-  ConversationStatus,
-  FollowUpStatus,
-} from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { Channel, ConversationStatus, FollowUpStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../shared/redis/redis.service';
+import { AiSuggestionProducer } from '../async/producers/ai-suggestion.producer';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { newCorrelationId } from '../whatsapp/correlation';
 import {
   AI_CONTEXT_MAX_CHARS,
   AI_CONTEXT_MAX_MESSAGES,
@@ -61,54 +61,165 @@ type AiMetadata = {
   attemptCount: number;
 };
 
+type SuggestSyncResult = {
+  ok: true;
+  conversationId: string;
+  leadId: string;
+  followUpId: string;
+  suggestion: string;
+  model: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+};
+
+type SuggestAcceptedResult = {
+  ok: true;
+  accepted: true;
+  conversationId: string;
+  correlationId: string;
+  jobId: string;
+};
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
+  private readonly asyncAiEnabled: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly openai: OpenAiClient,
     private readonly redis: RedisService,
-  ) {}
+    private readonly config: ConfigService,
+    @Optional()
+    private readonly aiSuggestionProducer?: AiSuggestionProducer,
+  ) {
+    this.asyncAiEnabled =
+      this.config.get<boolean>('async.aiEnabled', false) === true;
+  }
 
+  /**
+   * HTTP entry. Flag off → sync (comportamento atual).
+   * Flag on → cria solicitação, enqueue, retorna accepted.
+   */
   async suggestForConversation(
     actor: CompanyActor,
     conversationId: string,
     dto: SuggestReplyDto,
     meta?: RequestMeta,
-  ) {
+  ): Promise<SuggestSyncResult | SuggestAcceptedResult> {
+    if (this.asyncAiEnabled) {
+      return this.acceptSuggestRequest(actor, conversationId, dto, meta);
+    }
+    return this.runSuggest(actor, conversationId, dto, meta);
+  }
+
+  /**
+   * Worker entry (7.2C) — always runs sync generation (ignores async flag).
+   */
+  async processSuggestJob(input: {
+    companyId: string;
+    actorUserId: string;
+    conversationId: string;
+    dto: SuggestReplyDto;
+    meta?: RequestMeta;
+  }): Promise<SuggestSyncResult> {
+    const actor = {
+      cid: input.companyId,
+      sub: input.actorUserId,
+    } as CompanyActor;
+    return this.runSuggest(actor, input.conversationId, input.dto, input.meta);
+  }
+
+  /** Exposto para testes / callers sem acoplar a constants. */
+  static isAiFollowUp(metadata: unknown): boolean {
+    return isAiFollowUpMetadata(metadata);
+  }
+
+  private async acceptSuggestRequest(
+    actor: CompanyActor,
+    conversationId: string,
+    dto: SuggestReplyDto,
+    meta?: RequestMeta,
+  ): Promise<SuggestAcceptedResult> {
+    const companyId = actor.cid;
+    if (!companyId) {
+      throw new ForbiddenException('Token sem companyId (cid)');
+    }
+    if (!this.aiSuggestionProducer) {
+      throw new ServiceUnavailableException(
+        'Async AI enabled but producer is unavailable',
+      );
+    }
+
+    await this.assertConversationReady(companyId, conversationId);
+    await this.assertRateLimits(companyId);
+
+    const correlationId = newCorrelationId();
+    try {
+      const { jobId, deduped } = await this.aiSuggestionProducer.enqueue({
+        v: 1,
+        companyId,
+        conversationId,
+        actorUserId: actor.sub,
+        correlationId,
+        ...(dto.tone ? { tone: dto.tone } : {}),
+        ...(dto.instruction ? { instruction: dto.instruction } : {}),
+        ...(meta?.ip ? { ip: meta.ip } : {}),
+        ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
+      });
+
+      if (deduped) {
+        throw new ConflictException(
+          'Já existe uma geração de sugestão IA em andamento para esta Conversation',
+        );
+      }
+
+      return {
+        ok: true,
+        accepted: true,
+        conversationId,
+        correlationId,
+        jobId,
+      };
+    } catch (err) {
+      if (
+        err instanceof ConflictException ||
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException ||
+        err instanceof HttpException
+      ) {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `ai suggest enqueue failed conversation=${conversationId}: ${message}`,
+      );
+      throw new ServiceUnavailableException(
+        'Failed to enqueue AI suggestion for async processing',
+      );
+    }
+  }
+
+  private async runSuggest(
+    actor: CompanyActor,
+    conversationId: string,
+    dto: SuggestReplyDto,
+    meta?: RequestMeta,
+  ): Promise<SuggestSyncResult> {
     const companyId = actor.cid;
     if (!companyId) {
       throw new ForbiddenException('Token sem companyId (cid)');
     }
 
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, companyId, deletedAt: null },
-      include: {
-        lead: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            status: true,
-            source: true,
-            deletedAt: true,
-          },
-        },
-      },
-    });
-    if (!conversation || conversation.lead.deletedAt) {
-      throw new NotFoundException('Conversation não encontrada');
-    }
-    if (
-      conversation.status !== ConversationStatus.OPEN &&
-      conversation.status !== ConversationStatus.IDLE
-    ) {
-      throw new BadRequestException(
-        'Sugestão IA disponível apenas para Conversation OPEN ou IDLE',
-      );
-    }
+    const conversation = await this.assertConversationReady(
+      companyId,
+      conversationId,
+    );
 
     const lockKey = `${AI_GENERATION_LOCK_PREFIX}${companyId}:${conversationId}`;
     const lockToken = await this.redis.tryAcquireLock(
@@ -254,9 +365,37 @@ export class AiService {
     }
   }
 
-  /** Exposto para testes / callers sem acoplar a constants. */
-  static isAiFollowUp(metadata: unknown): boolean {
-    return isAiFollowUpMetadata(metadata);
+  private async assertConversationReady(
+    companyId: string,
+    conversationId: string,
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, companyId, deletedAt: null },
+      include: {
+        lead: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            status: true,
+            source: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+    if (!conversation || conversation.lead.deletedAt) {
+      throw new NotFoundException('Conversation não encontrada');
+    }
+    if (
+      conversation.status !== ConversationStatus.OPEN &&
+      conversation.status !== ConversationStatus.IDLE
+    ) {
+      throw new BadRequestException(
+        'Sugestão IA disponível apenas para Conversation OPEN ou IDLE',
+      );
+    }
+    return conversation;
   }
 
   private buildPromptMessages(

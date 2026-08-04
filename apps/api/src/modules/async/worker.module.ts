@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
 import { FollowUpModule } from '../follow-up/follow-up.module';
 import { OpsModule } from '../ops/ops.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { QueueModule } from './queue.module';
 import { ReconcileCycleService } from './reconcile-cycle.service';
+import { AiSuggestionProcessor } from './workers/ai-suggestion.processor';
 import { FollowUpSchedulerProcessor } from './workers/followup-scheduler.processor';
 import { ReconcileProcessor } from './workers/reconcile.processor';
 import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
@@ -16,7 +18,8 @@ import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
  * 7.1: whatsapp-inbound
  * 7.2A: followup-scheduler
  * 7.2B: reconcile-worker
- * Send / AI workers — not started here.
+ * 7.2C: ai-suggestions
+ * Send / Outbound worker — not started here.
  */
 @Module({
   imports: [
@@ -25,12 +28,14 @@ import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
     FollowUpModule,
     OpsModule,
     AuditModule,
+    AiModule,
   ],
   providers: [
     WhatsappInboundProcessor,
     FollowUpSchedulerProcessor,
     ReconcileCycleService,
     ReconcileProcessor,
+    AiSuggestionProcessor,
   ],
 })
 export class WorkerModule {}
