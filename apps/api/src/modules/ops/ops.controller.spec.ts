@@ -19,6 +19,7 @@ describe('OpsController permissions', () => {
     }),
     getAlerts: jest.fn(),
     getHealth: jest.fn(),
+    getDiagnostics: jest.fn(),
     listAudit: jest.fn(),
     getAudit: jest.fn(),
     listWebhooks: jest.fn(),
@@ -59,6 +60,9 @@ describe('OpsController permissions', () => {
       true,
     );
     expect(canActivate(MembershipRole.AGENT, controller.getHealth)).toBe(true);
+    expect(canActivate(MembershipRole.AGENT, controller.getDiagnostics)).toBe(
+      true,
+    );
   });
 
   it('denies AGENT on reconcile endpoints', () => {

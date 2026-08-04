@@ -67,6 +67,16 @@ export class OpsController {
     return this.opsService.getHealth(this.asCompanyActor(user));
   }
 
+  @Get('diagnostics')
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
+  @ApiOperation({
+    summary:
+      'Pilot diagnostics (D3: OWNER|ADMIN full; AGENT limited — no openai/workers)',
+  })
+  getDiagnostics(@CurrentUser() user: AuthenticatedUser) {
+    return this.opsService.getDiagnostics(this.asCompanyActor(user));
+  }
+
   @Get('audit')
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
   @ApiOperation({ summary: 'Audit Explorer — list (occurredAt DESC)' })
