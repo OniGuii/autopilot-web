@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  QUEUE_AI_SUGGESTIONS,
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
   QUEUE_RECONCILE_WORKER,
@@ -32,6 +33,12 @@ export type ReconcileMetrics = {
   itemsFlagged: number;
 };
 
+export type AiMetrics = {
+  generated: number;
+  failed: number;
+  avgDuration: number | null;
+};
+
 export type QueueMetricsSnapshot = {
   /** false when Redis/Bull collection failed — never invent zeros. */
   available: boolean;
@@ -39,6 +46,7 @@ export type QueueMetricsSnapshot = {
   whatsappInbound: QueueCounts | null;
   followupScheduler: QueueCounts | null;
   reconcileWorker: QueueCounts | null;
+  aiSuggestions: QueueCounts | null;
   dlq: DlqMetrics | null;
   /** Back-compat depth mirror; null when unavailable. */
   dlqWhatsappInbound: number | null;
@@ -47,6 +55,7 @@ export type QueueMetricsSnapshot = {
   stalledTotal: number;
   claimFailuresTotal: number;
   reconcile: ReconcileMetrics;
+  ai: AiMetrics;
 };
 
 /**
@@ -64,6 +73,10 @@ export class AsyncMetricsService {
   private reconcileItemsChecked = 0;
   private reconcileItemsFlagged = 0;
   private lastReconcileDurationMs: number | null = null;
+  private aiGenerated = 0;
+  private aiFailed = 0;
+  private aiDurationSumMs = 0;
+  private aiDurationSamples = 0;
 
   constructor(
     @InjectQueue(QUEUE_WHATSAPP_INBOUND)
@@ -74,6 +87,8 @@ export class AsyncMetricsService {
     private readonly followupScheduler: Queue,
     @InjectQueue(QUEUE_RECONCILE_WORKER)
     private readonly reconcileWorker: Queue,
+    @InjectQueue(QUEUE_AI_SUGGESTIONS)
+    private readonly aiSuggestions: Queue,
     private readonly dlq: DlqService,
   ) {}
 
@@ -106,6 +121,16 @@ export class AsyncMetricsService {
     this.reconcileItemsFlagged += input.itemsFlagged;
   }
 
+  recordAiGenerated(durationMs: number): void {
+    this.aiGenerated += 1;
+    this.aiDurationSumMs += durationMs;
+    this.aiDurationSamples += 1;
+  }
+
+  recordAiFailed(): void {
+    this.aiFailed += 1;
+  }
+
   async snapshot(): Promise<QueueMetricsSnapshot> {
     const counters = {
       processingDurationP95Ms: this.p95DurationMs(),
@@ -118,41 +143,62 @@ export class AsyncMetricsService {
         itemsChecked: this.reconcileItemsChecked,
         itemsFlagged: this.reconcileItemsFlagged,
       } satisfies ReconcileMetrics,
+      ai: {
+        generated: this.aiGenerated,
+        failed: this.aiFailed,
+        avgDuration:
+          this.aiDurationSamples > 0
+            ? Math.round(this.aiDurationSumMs / this.aiDurationSamples)
+            : null,
+      } satisfies AiMetrics,
     };
 
     try {
       await this.dlq.cleanup();
-      const [inboundCounts, followupCounts, reconcileCounts, dlqMetrics] =
-        await Promise.all([
-          this.inbound.getJobCounts(
-            'waiting',
-            'active',
-            'completed',
-            'failed',
-            'delayed',
-          ),
-          this.followupScheduler.getJobCounts(
-            'waiting',
-            'active',
-            'completed',
-            'failed',
-            'delayed',
-          ),
-          this.reconcileWorker.getJobCounts(
-            'waiting',
-            'active',
-            'completed',
-            'failed',
-            'delayed',
-          ),
-          this.dlq.getMetrics(),
-        ]);
+      const [
+        inboundCounts,
+        followupCounts,
+        reconcileCounts,
+        aiCounts,
+        dlqMetrics,
+      ] = await Promise.all([
+        this.inbound.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
+        this.followupScheduler.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
+        this.reconcileWorker.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
+        this.aiSuggestions.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
+        this.dlq.getMetrics(),
+      ]);
 
       return {
         available: true,
         whatsappInbound: toCounts(inboundCounts),
         followupScheduler: toCounts(followupCounts),
         reconcileWorker: toCounts(reconcileCounts),
+        aiSuggestions: toCounts(aiCounts),
         dlq: dlqMetrics,
         dlqWhatsappInbound: dlqMetrics.depth,
         ...counters,
@@ -166,6 +212,7 @@ export class AsyncMetricsService {
         whatsappInbound: null,
         followupScheduler: null,
         reconcileWorker: null,
+        aiSuggestions: null,
         dlq: null,
         dlqWhatsappInbound: null,
         ...counters,

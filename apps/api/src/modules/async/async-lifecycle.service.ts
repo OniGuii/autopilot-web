@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  QUEUE_AI_SUGGESTIONS,
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
   QUEUE_RECONCILE_WORKER,
@@ -26,6 +27,8 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
     private readonly followupScheduler: Queue,
     @InjectQueue(QUEUE_RECONCILE_WORKER)
     private readonly reconcileWorker: Queue,
+    @InjectQueue(QUEUE_AI_SUGGESTIONS)
+    private readonly aiSuggestions: Queue,
   ) {}
 
   async onApplicationShutdown(signal?: string): Promise<void> {
@@ -37,6 +40,7 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
       this.inbound.pause(),
       this.followupScheduler.pause(),
       this.reconcileWorker.pause(),
+      this.aiSuggestions.pause(),
     ]);
 
     await Promise.allSettled([
@@ -44,6 +48,7 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
       this.dlq.close(),
       this.followupScheduler.close(),
       this.reconcileWorker.close(),
+      this.aiSuggestions.close(),
     ]);
     this.logger.log('queue shutdown complete');
   }

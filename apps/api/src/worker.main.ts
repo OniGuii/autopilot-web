@@ -29,7 +29,7 @@ async function bootstrap() {
   });
   app.enableShutdownHooks();
   logger.log(
-    'AutoPilot workers running (whatsapp-inbound, followup-scheduler, reconcile-worker)',
+    'AutoPilot workers running (whatsapp-inbound, followup-scheduler, reconcile-worker, ai-suggestions)',
   );
 }
 

@@ -135,4 +135,18 @@ export const envValidationSchema = Joi.object({
     .min(30_000)
     .default(5 * 60 * 1000),
   RECONCILE_TAKE: Joi.number().integer().min(1).default(100),
+
+  /** 7.2C — AI suggestion worker (default off = sync suggest). */
+  ASYNC_AI_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  AI_SUGGEST_ATTEMPTS: Joi.number().integer().min(1).default(3),
+  AI_SUGGEST_BACKOFF_MS: Joi.number().integer().min(100).default(3_000),
+  AI_SUGGEST_CONCURRENCY: Joi.number().integer().min(1).default(2),
+  AI_SUGGEST_TIMEOUT_MS: Joi.number().integer().min(1_000).default(25_000),
+  AI_SUGGEST_LOCK_DURATION_MS: Joi.number()
+    .integer()
+    .min(5_000)
+    .default(90_000),
+  AI_SUGGEST_BACKLOG_HIGH: Joi.number().integer().min(1).default(50),
+  AI_FAILURE_RATE_MIN_SAMPLES: Joi.number().integer().min(1).default(10),
+  AI_FAILURE_RATE_THRESHOLD: Joi.number().min(0).max(1).default(0.5),
 });

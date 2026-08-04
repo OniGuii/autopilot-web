@@ -228,11 +228,26 @@ describe('OpsService', () => {
               failed: 0,
               delayed: 0,
             },
+      aiSuggestions:
+        opts?.redisOk === false
+          ? null
+          : {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0,
+            },
       reconcile: {
         runs: 0,
         durationMs: null,
         itemsChecked: 0,
         itemsFlagged: 0,
+      },
+      ai: {
+        generated: 0,
+        failed: 0,
+        avgDuration: null,
       },
     };
     const asyncMetrics = {
@@ -293,10 +308,16 @@ describe('OpsService', () => {
           whatsappInbound: expect.objectContaining({ waiting: 0 }),
           followupScheduler: expect.objectContaining({ waiting: 0 }),
           reconcileWorker: expect.objectContaining({ waiting: 0 }),
+          aiSuggestions: expect.objectContaining({ waiting: 0 }),
           reconcile: expect.objectContaining({
             runs: 0,
             itemsChecked: 0,
             itemsFlagged: 0,
+          }),
+          ai: expect.objectContaining({
+            generated: 0,
+            failed: 0,
+            avgDuration: null,
           }),
           retriesTotal: 0,
           stalledTotal: 0,
@@ -360,12 +381,33 @@ describe('OpsService', () => {
           failed: 0,
           delayed: 0,
         },
+        reconcileWorker: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        aiSuggestions: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
         dlq: { depth: 0, oldestAgeMs: null },
         dlqWhatsappInbound: 0,
         processingDurationP95Ms: null,
         retriesTotal: 0,
         stalledTotal: 0,
         claimFailuresTotal: 0,
+        reconcile: {
+          runs: 0,
+          durationMs: null,
+          itemsChecked: 0,
+          itemsFlagged: 0,
+        },
+        ai: { generated: 0, failed: 0, avgDuration: null },
       },
     });
 
@@ -374,6 +416,60 @@ describe('OpsService', () => {
     expect(codes).toContain('FOLLOWUP_BACKLOG_HIGH');
     expect(codes).toContain('FOLLOWUP_STUCK_EXECUTING');
     expect(codes).toContain('EXECUTING_FOLLOWUPS_STALE');
+  });
+
+  it('alerts AI_QUEUE_BACKLOG_HIGH and AI_GENERATION_FAILURE_RATE', async () => {
+    const { service } = build({
+      queueSnapshot: {
+        available: true,
+        whatsappInbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        followupScheduler: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        reconcileWorker: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        aiSuggestions: {
+          waiting: 80,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        dlq: { depth: 0, oldestAgeMs: null },
+        dlqWhatsappInbound: 0,
+        processingDurationP95Ms: null,
+        retriesTotal: 0,
+        stalledTotal: 0,
+        claimFailuresTotal: 0,
+        reconcile: {
+          runs: 0,
+          durationMs: null,
+          itemsChecked: 0,
+          itemsFlagged: 0,
+        },
+        ai: { generated: 4, failed: 8, avgDuration: 1200 },
+      },
+    });
+
+    const result = await service.getAlerts(actor);
+    const codes = result.alerts.map((a) => a.code);
+    expect(codes).toContain('AI_QUEUE_BACKLOG_HIGH');
+    expect(codes).toContain('AI_GENERATION_FAILURE_RATE');
   });
 
   it('builds alerts when whatsapp disconnected and pending stale', async () => {
