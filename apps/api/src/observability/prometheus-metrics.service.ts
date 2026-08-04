@@ -382,6 +382,18 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       ['followup-scheduler', snap.followupScheduler],
       ['reconcile-worker', snap.reconcileWorker],
       ['ai-suggestions', snap.aiSuggestions],
+      [
+        'outbound-send',
+        snap.outbound
+          ? {
+              waiting: snap.outbound.waiting,
+              active: snap.outbound.active,
+              completed: snap.outbound.completed,
+              failed: snap.outbound.failed,
+              delayed: snap.outbound.delayed,
+            }
+          : null,
+      ],
     ];
     for (const [queue, counts] of map) {
       if (!counts) continue;

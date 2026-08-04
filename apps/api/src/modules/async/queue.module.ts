@@ -9,6 +9,7 @@ import {
   QUEUE_AI_SUGGESTIONS,
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
+  QUEUE_OUTBOUND_SEND,
   QUEUE_RECONCILE_WORKER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
@@ -17,6 +18,7 @@ import { DlqService } from './dlq.service';
 import { FollowUpDueScanner } from './followup-due.scanner';
 import { AiSuggestionProducer } from './producers/ai-suggestion.producer';
 import { FollowUpSchedulerProducer } from './producers/followup-scheduler.producer';
+import { OutboundSendProducer } from './producers/outbound-send.producer';
 import { ReconcileProducer } from './producers/reconcile.producer';
 import { ReconcileScheduler } from './reconcile.scheduler';
 import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
@@ -53,6 +55,7 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
       { name: QUEUE_FOLLOWUP_SCHEDULER },
       { name: QUEUE_RECONCILE_WORKER },
       { name: QUEUE_AI_SUGGESTIONS },
+      { name: QUEUE_OUTBOUND_SEND },
     ),
   ],
   providers: [
@@ -62,6 +65,7 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
     ReconcileProducer,
     ReconcileScheduler,
     AiSuggestionProducer,
+    OutboundSendProducer,
     DlqService,
     AsyncMetricsService,
     AsyncLifecycleService,
@@ -72,6 +76,7 @@ import { WhatsappInboundProducer } from './producers/whatsapp-inbound.producer';
     FollowUpSchedulerProducer,
     ReconcileProducer,
     AiSuggestionProducer,
+    OutboundSendProducer,
     DlqService,
     AsyncMetricsService,
   ],

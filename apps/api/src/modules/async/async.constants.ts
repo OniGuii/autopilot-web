@@ -15,10 +15,14 @@ export const QUEUE_RECONCILE_WORKER = 'reconcile-worker';
 /** 7.2C — AI suggestion generation */
 export const QUEUE_AI_SUGGESTIONS = 'ai-suggestions';
 
+/** 8C — WhatsApp outbound send */
+export const QUEUE_OUTBOUND_SEND = 'outbound-send';
+
 export const WHATSAPP_INBOUND_JOB_NAME = 'process-webhook';
 export const FOLLOWUP_SCHEDULER_JOB_NAME = 'execute-due-followup';
 export const RECONCILE_CYCLE_JOB_NAME = 'reconcile-cycle';
 export const AI_SUGGESTION_JOB_NAME = 'generate-suggestion';
+export const OUTBOUND_SEND_JOB_NAME = 'send-outbound';
 
 export const WHATSAPP_INBOUND_ATTEMPTS_DEFAULT = 5;
 export const WHATSAPP_INBOUND_BACKOFF_MS_DEFAULT = 2_000;
@@ -70,6 +74,15 @@ export const AI_FAILURE_RATE_MIN_SAMPLES_DEFAULT = 10;
 /** Failure rate threshold (0–1). */
 export const AI_FAILURE_RATE_THRESHOLD_DEFAULT = 0.5;
 
+/** 8C — outbound send (default attempts=1: no Evolution retry after PENDING). */
+export const OUTBOUND_SEND_ATTEMPTS_DEFAULT = 1;
+export const OUTBOUND_SEND_BACKOFF_MS_DEFAULT = 3_000;
+export const OUTBOUND_SEND_CONCURRENCY_DEFAULT = 5;
+export const OUTBOUND_SEND_LOCK_DURATION_MS_DEFAULT = 45_000;
+export const OUTBOUND_QUEUE_BACKLOG_HIGH_DEFAULT = 100;
+export const OUTBOUND_FAILURE_RATE_MIN_SAMPLES_DEFAULT = 10;
+export const OUTBOUND_FAILURE_RATE_THRESHOLD_DEFAULT = 0.5;
+
 /** Resolve concurrency at module load (decorator options are static). */
 export function resolveQueueConcurrency(): number {
   const raw =
@@ -113,4 +126,22 @@ export function resolveAiSuggestLockDurationMs(): number {
   return Number.isFinite(n) && n >= 5_000
     ? n
     : AI_SUGGEST_LOCK_DURATION_MS_DEFAULT;
+}
+
+export function resolveOutboundSendConcurrency(): number {
+  const raw =
+    process.env.OUTBOUND_SEND_CONCURRENCY ??
+    String(OUTBOUND_SEND_CONCURRENCY_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : OUTBOUND_SEND_CONCURRENCY_DEFAULT;
+}
+
+export function resolveOutboundSendLockDurationMs(): number {
+  const raw =
+    process.env.OUTBOUND_SEND_LOCK_DURATION_MS ??
+    String(OUTBOUND_SEND_LOCK_DURATION_MS_DEFAULT);
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 5_000
+    ? n
+    : OUTBOUND_SEND_LOCK_DURATION_MS_DEFAULT;
 }

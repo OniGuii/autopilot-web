@@ -4,10 +4,12 @@ import {
   ConflictException,
   HttpException,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ConversationStatus,
   MessageDirection,
@@ -16,6 +18,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PrometheusMetricsService } from '../../../observability/prometheus-metrics.service';
+import { OutboundSendProducer } from '../../async/producers/outbound-send.producer';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/jwt-payload';
 import { newCorrelationId } from '../correlation';
@@ -59,14 +62,33 @@ export type SendWhatsappResult = {
   correlationId: string;
 };
 
+export type SendWhatsappAcceptedResult = {
+  ok: true;
+  accepted: true;
+  messageId: string;
+  conversationId: string;
+  leadId: string;
+  status: string;
+  correlationId: string;
+  jobId: string;
+};
+
 @Injectable()
 export class WhatsappSendService {
+  private readonly logger = new Logger(WhatsappSendService.name);
+  private readonly asyncOutboundEnabled: boolean;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly evolution: EvolutionClient,
+    private readonly config: ConfigService,
+    @Optional() private readonly outboundProducer?: OutboundSendProducer,
     @Optional() private readonly prom?: PrometheusMetricsService,
-  ) {}
+  ) {
+    this.asyncOutboundEnabled =
+      this.config.get<boolean>('async.outboundEnabled', false) === true;
+  }
 
   /** P4-F1 helper — check before FollowUp enters EXECUTING */
   async assertConnected(companyId: string): Promise<void> {
@@ -88,7 +110,23 @@ export class WhatsappSendService {
   }
 
   /**
-   * Authenticated outbound send.
+   * HTTP entry (8C). Flag off → sync send (comportamento atual).
+   * Flag on → PENDING + enqueue + accepted.
+   * FollowUp continues to call `send()` (always sync).
+   */
+  async sendHttp(
+    actor: CompanyActor,
+    input: SendWhatsappInput,
+    meta?: RequestMeta,
+  ): Promise<SendWhatsappResult | SendWhatsappAcceptedResult> {
+    if (this.asyncOutboundEnabled) {
+      return this.acceptSend(actor, input, meta);
+    }
+    return this.send(actor, input, meta);
+  }
+
+  /**
+   * Authenticated outbound send (sync).
    * Tenant = JWT.cid only. Never reads companyId from DTO/payload.
    * P4-D1: FollowUp must call this — never create Message directly.
    */
@@ -97,6 +135,309 @@ export class WhatsappSendService {
     input: SendWhatsappInput,
     meta?: RequestMeta,
   ): Promise<SendWhatsappResult> {
+    const prepared = await this.createPendingMessage(actor, input);
+    return this.deliverPending(prepared, actor, meta);
+  }
+
+  /**
+   * 8C worker entry — claim PENDING Message → Evolution → SENT|FAILED.
+   * Always runs delivery (ignores ASYNC_OUTBOUND_ENABLED).
+   */
+  async processOutboundJob(input: {
+    companyId: string;
+    messageId: string;
+    actorUserId: string;
+    correlationId: string;
+    meta?: RequestMeta;
+  }): Promise<{
+    ok: true;
+    messageId: string;
+    status: string;
+    externalMessageId: string | null;
+    correlationId: string;
+  }> {
+    const companyId = input.companyId;
+    const message = await this.prisma.message.findFirst({
+      where: {
+        id: input.messageId,
+        companyId,
+        deletedAt: null,
+        direction: MessageDirection.OUTBOUND,
+      },
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Idempotent: already delivered
+    if (
+      message.status === OUTBOUND_MESSAGE_STATUS.SENT ||
+      message.status === OUTBOUND_MESSAGE_STATUS.DELIVERED ||
+      message.status === OUTBOUND_MESSAGE_STATUS.READ
+    ) {
+      return {
+        ok: true,
+        messageId: message.id,
+        status: message.status,
+        externalMessageId: message.externalMessageId,
+        correlationId: input.correlationId,
+      };
+    }
+
+    if (message.status === OUTBOUND_MESSAGE_STATUS.FAILED) {
+      throw new ConflictException('Message already FAILED');
+    }
+
+    if (message.status !== OUTBOUND_MESSAGE_STATUS.PENDING) {
+      throw new ConflictException(
+        `Unexpected message status=${message.status}`,
+      );
+    }
+
+    // Claim atômico (SELECT FOR UPDATE) — evita double Evolution send.
+    const claim = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{
+          id: string;
+          status: string;
+          external_message_id: string | null;
+          metadata: unknown;
+        }>
+      >`
+        SELECT id, status, external_message_id, metadata
+        FROM messages
+        WHERE id = ${message.id}::uuid
+          AND company_id = ${companyId}::uuid
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      const row = rows[0];
+      if (!row) {
+        return { kind: 'missing' as const };
+      }
+      if (
+        row.status === OUTBOUND_MESSAGE_STATUS.SENT ||
+        row.status === OUTBOUND_MESSAGE_STATUS.DELIVERED ||
+        row.status === OUTBOUND_MESSAGE_STATUS.READ
+      ) {
+        return {
+          kind: 'already_sent' as const,
+          status: row.status,
+          externalMessageId: row.external_message_id,
+        };
+      }
+      if (row.status !== OUTBOUND_MESSAGE_STATUS.PENDING) {
+        return { kind: 'bad_status' as const, status: row.status };
+      }
+      const meta = asJsonObject(row.metadata);
+      if (typeof meta.outboundClaimedAt === 'string') {
+        return { kind: 'claimed' as const };
+      }
+      await tx.message.update({
+        where: { id: message.id },
+        data: {
+          metadata: {
+            ...meta,
+            outboundClaimedAt: new Date().toISOString(),
+            outboundClaimCorrelationId: input.correlationId,
+          },
+        },
+      });
+      return { kind: 'ok' as const };
+    });
+
+    if (claim.kind === 'already_sent') {
+      return {
+        ok: true,
+        messageId: message.id,
+        status: claim.status,
+        externalMessageId: claim.externalMessageId,
+        correlationId: input.correlationId,
+      };
+    }
+    if (claim.kind !== 'ok') {
+      this.logger.warn(
+        `outbound claim lost messageId=${message.id} kind=${claim.kind} correlationId=${input.correlationId}`,
+      );
+      throw new ConflictException('Message already claimed or not PENDING');
+    }
+
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: message.conversationId,
+        companyId,
+        deletedAt: null,
+      },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: conversation.leadId, companyId, deletedAt: null },
+    });
+    if (!lead) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    const metaObj = asJsonObject(message.metadata);
+    const instanceName =
+      typeof metaObj.evolutionInstanceName === 'string'
+        ? metaObj.evolutionInstanceName
+        : null;
+    const instance = instanceName
+      ? await this.prisma.whatsAppInstance.findFirst({
+          where: {
+            companyId,
+            evolutionInstanceName: instanceName,
+            deletedAt: null,
+          },
+        })
+      : await this.prisma.whatsAppInstance.findFirst({
+          where: { companyId, deletedAt: null },
+        });
+    if (!instance) {
+      throw new ConflictException('WhatsApp instance not found');
+    }
+
+    const actor = { cid: companyId, sub: input.actorUserId } as CompanyActor;
+    const body = (message.body ?? '').trim();
+    const source =
+      typeof metaObj.source === 'string' ? metaObj.source : 'whatsapp_send';
+
+    return this.deliverPending(
+      {
+        companyId,
+        actor,
+        lead,
+        conversation,
+        instance,
+        pending: message,
+        body,
+        correlationId: input.correlationId,
+        source,
+      },
+      actor,
+      input.meta,
+    ).then((r) => ({
+      ok: true as const,
+      messageId: r.messageId,
+      status: r.status,
+      externalMessageId: r.externalMessageId,
+      correlationId: r.correlationId,
+    }));
+  }
+
+  private async acceptSend(
+    actor: CompanyActor,
+    input: SendWhatsappInput,
+    meta?: RequestMeta,
+  ): Promise<SendWhatsappAcceptedResult> {
+    if (!this.outboundProducer) {
+      throw new ServiceUnavailableException(
+        'Async outbound enabled but producer is unavailable',
+      );
+    }
+
+    const prepared = await this.createPendingMessage(actor, input);
+
+    try {
+      const { jobId, deduped } = await this.outboundProducer.enqueue({
+        v: 1,
+        companyId: prepared.companyId,
+        messageId: prepared.pending.id,
+        leadId: prepared.lead.id,
+        conversationId: prepared.conversation.id,
+        actorUserId: actor.sub,
+        correlationId: prepared.correlationId,
+        ...(meta?.ip ? { ip: meta.ip } : {}),
+        ...(meta?.userAgent ? { userAgent: meta.userAgent } : {}),
+      });
+
+      if (deduped) {
+        return {
+          ok: true,
+          accepted: true,
+          messageId: prepared.pending.id,
+          conversationId: prepared.conversation.id,
+          leadId: prepared.lead.id,
+          status: OUTBOUND_MESSAGE_STATUS.PENDING,
+          correlationId: prepared.correlationId,
+          jobId,
+        };
+      }
+
+      return {
+        ok: true,
+        accepted: true,
+        messageId: prepared.pending.id,
+        conversationId: prepared.conversation.id,
+        leadId: prepared.lead.id,
+        status: OUTBOUND_MESSAGE_STATUS.PENDING,
+        correlationId: prepared.correlationId,
+        jobId,
+      };
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message.slice(0, 1000) : 'Enqueue failed';
+      this.logger.error(
+        `outbound enqueue failed messageId=${prepared.pending.id}: ${errorMessage}`,
+      );
+      await this.prisma.$transaction(async (tx) => {
+        await tx.message.update({
+          where: { id: prepared.pending.id },
+          data: {
+            status: OUTBOUND_MESSAGE_STATUS.FAILED,
+            failedAt: new Date(),
+            errorMessage: `ENQUEUE_FAILED: ${errorMessage}`,
+          },
+        });
+        await this.audit.write(tx, {
+          companyId: prepared.companyId,
+          actorUserId: actor.sub,
+          action: 'WHATSAPP_MESSAGE_FAILED',
+          targetType: 'MESSAGE',
+          targetId: prepared.pending.id,
+          before: {
+            status: OUTBOUND_MESSAGE_STATUS.PENDING,
+            correlationId: prepared.correlationId,
+          },
+          after: {
+            status: OUTBOUND_MESSAGE_STATUS.FAILED,
+            errorMessage: `ENQUEUE_FAILED: ${errorMessage}`,
+            correlationId: prepared.correlationId,
+          },
+          ip: meta?.ip,
+          userAgent: meta?.userAgent,
+        });
+      });
+      throw new ServiceUnavailableException({
+        message: 'Outbound enqueue failed',
+        messageId: prepared.pending.id,
+        status: OUTBOUND_MESSAGE_STATUS.FAILED,
+        correlationId: prepared.correlationId,
+      });
+    }
+  }
+
+  private async createPendingMessage(
+    actor: CompanyActor,
+    input: SendWhatsappInput,
+  ): Promise<{
+    companyId: string;
+    actor: CompanyActor;
+    lead: { id: string; phone: string };
+    conversation: { id: string; leadId: string };
+    instance: {
+      id: string;
+      evolutionInstanceName: string;
+      status: WhatsAppConnectionStatus;
+    };
+    pending: { id: string; conversationId: string; body: string | null };
+    body: string;
+    correlationId: string;
+    source: string;
+  }> {
     const companyId = actor.cid;
     const body = input.body.trim();
     if (!body) {
@@ -178,6 +519,45 @@ export class WhatsappSendService {
         metadata: messageMetadata,
       },
     });
+
+    return {
+      companyId,
+      actor,
+      lead,
+      conversation,
+      instance,
+      pending,
+      body,
+      correlationId,
+      source,
+    };
+  }
+
+  private async deliverPending(
+    prepared: {
+      companyId: string;
+      actor: CompanyActor;
+      lead: { id: string; phone: string };
+      conversation: { id: string };
+      instance: { evolutionInstanceName: string };
+      pending: { id: string };
+      body: string;
+      correlationId: string;
+      source: string;
+    },
+    actor: CompanyActor,
+    meta?: RequestMeta,
+  ): Promise<SendWhatsappResult> {
+    const {
+      companyId,
+      lead,
+      conversation,
+      instance,
+      pending,
+      body,
+      correlationId,
+      source,
+    } = prepared;
 
     let externalMessageId: string;
     try {
@@ -364,4 +744,11 @@ export class WhatsappSendService {
       }),
     };
   }
+}
+
+function asJsonObject(value: unknown): Prisma.InputJsonObject {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  return {};
 }

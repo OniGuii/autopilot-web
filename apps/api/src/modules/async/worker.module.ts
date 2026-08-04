@@ -8,6 +8,7 @@ import { QueueModule } from './queue.module';
 import { ReconcileCycleService } from './reconcile-cycle.service';
 import { AiSuggestionProcessor } from './workers/ai-suggestion.processor';
 import { FollowUpSchedulerProcessor } from './workers/followup-scheduler.processor';
+import { OutboundSendProcessor } from './workers/outbound-send.processor';
 import { ReconcileProcessor } from './workers/reconcile.processor';
 import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
 
@@ -19,7 +20,7 @@ import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
  * 7.2A: followup-scheduler
  * 7.2B: reconcile-worker
  * 7.2C: ai-suggestions
- * Send / Outbound worker — not started here.
+ * 8C: outbound-send
  */
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { WhatsappInboundProcessor } from './workers/whatsapp-inbound.processor';
     ReconcileCycleService,
     ReconcileProcessor,
     AiSuggestionProcessor,
+    OutboundSendProcessor,
   ],
 })
 export class WorkerModule {}

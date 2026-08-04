@@ -78,6 +78,17 @@ export type OpsMetrics = {
       completed: number;
       failed: number;
     } | null;
+    /** 8C — Bull counts + domain sent/failures (queues.outbound.*) */
+    outbound: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+      sent: number;
+      failures: number;
+      avgDuration: number | null;
+    } | null;
     /** Depth; null when unavailable (never masked as 0). */
     dlqWhatsappInbound: number | null;
     dlqDepth: number | null;
@@ -123,6 +134,9 @@ export class OpsService {
   private readonly aiSuggestBacklogHigh: number;
   private readonly aiFailureRateMinSamples: number;
   private readonly aiFailureRateThreshold: number;
+  private readonly outboundQueueBacklogHigh: number;
+  private readonly outboundFailureRateMinSamples: number;
+  private readonly outboundFailureRateThreshold: number;
   private readonly highErrorRateThreshold: number;
   private readonly highLatencyMs: number;
   private readonly queueBacklogHigh: number;
@@ -162,6 +176,18 @@ export class OpsService {
     );
     this.aiFailureRateThreshold = config.get<number>(
       'async.aiFailureRateThreshold',
+      0.5,
+    );
+    this.outboundQueueBacklogHigh = config.get<number>(
+      'async.outboundQueueBacklogHigh',
+      100,
+    );
+    this.outboundFailureRateMinSamples = config.get<number>(
+      'async.outboundFailureRateMinSamples',
+      10,
+    );
+    this.outboundFailureRateThreshold = config.get<number>(
+      'async.outboundFailureRateThreshold',
       0.5,
     );
     this.highErrorRateThreshold = config.get<number>(
@@ -325,6 +351,18 @@ export class OpsService {
               active: queues.aiSuggestions.active,
               completed: queues.aiSuggestions.completed,
               failed: queues.aiSuggestions.failed,
+            }
+          : null,
+        outbound: queues.outbound
+          ? {
+              waiting: queues.outbound.waiting,
+              active: queues.outbound.active,
+              completed: queues.outbound.completed,
+              failed: queues.outbound.failed,
+              delayed: queues.outbound.delayed,
+              sent: queues.outbound.sent,
+              failures: queues.outbound.failures,
+              avgDuration: queues.outbound.avgDuration,
             }
           : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,
@@ -566,13 +604,43 @@ export class OpsService {
       });
     }
 
+    const outboundWaiting = metrics.queues.outbound?.waiting;
+    if (
+      typeof outboundWaiting === 'number' &&
+      outboundWaiting >= this.outboundQueueBacklogHigh
+    ) {
+      alerts.push({
+        code: 'OUTBOUND_QUEUE_BACKLOG_HIGH',
+        severity: 'warning',
+        message: 'outbound-send waiting backlog is high',
+        count: outboundWaiting,
+      });
+    }
+
+    const outboundSent = metrics.queues.outbound?.sent ?? 0;
+    const outboundFailures = metrics.queues.outbound?.failures ?? 0;
+    const outboundTotal = outboundSent + outboundFailures;
+    if (
+      outboundTotal >= this.outboundFailureRateMinSamples &&
+      outboundFailures / outboundTotal >= this.outboundFailureRateThreshold
+    ) {
+      alerts.push({
+        code: 'OUTBOUND_FAILURE_RATE',
+        severity: 'warning',
+        message: 'Outbound send failure rate is high',
+        count: Math.round((outboundFailures / outboundTotal) * 100),
+      });
+    }
+
     const inboundWaiting = metrics.queues.whatsappInbound?.waiting ?? 0;
     const followupWaitingTotal = metrics.queues.followupScheduler?.waiting ?? 0;
     const aiWaitingTotal = metrics.queues.aiSuggestions?.waiting ?? 0;
+    const outboundWaitingTotal = metrics.queues.outbound?.waiting ?? 0;
     const maxQueueWaiting = Math.max(
       inboundWaiting,
       followupWaitingTotal,
       aiWaitingTotal,
+      outboundWaitingTotal,
     );
     if (maxQueueWaiting >= this.queueBacklogHigh) {
       alerts.push({
@@ -733,6 +801,18 @@ export class OpsService {
               active: queues.aiSuggestions.active,
               completed: queues.aiSuggestions.completed,
               failed: queues.aiSuggestions.failed,
+            }
+          : null,
+        outbound: queues.outbound
+          ? {
+              waiting: queues.outbound.waiting,
+              active: queues.outbound.active,
+              completed: queues.outbound.completed,
+              failed: queues.outbound.failed,
+              delayed: queues.outbound.delayed,
+              sent: queues.outbound.sent,
+              failures: queues.outbound.failures,
+              avgDuration: queues.outbound.avgDuration,
             }
           : null,
         dlqWhatsappInbound: queues.dlqWhatsappInbound,

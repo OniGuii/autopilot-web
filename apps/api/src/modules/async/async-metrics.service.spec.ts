@@ -38,23 +38,32 @@ describe('AsyncMetricsService', () => {
         completed: 5,
       }),
     };
+    const outbound = {
+      getJobCounts: jest.fn().mockResolvedValue({
+        ...emptyCounts,
+        waiting: 7,
+        completed: 9,
+      }),
+    };
     const dlq = {
       cleanup: jest.fn().mockResolvedValue(undefined),
       getMetrics: jest.fn().mockResolvedValue({ depth: 3, oldestAgeMs: 9_000 }),
     };
-    return { inbound, followup, reconcile, aiSuggestions, dlq };
+    return { inbound, followup, reconcile, aiSuggestions, outbound, dlq };
   }
 
   it('returns available=false without inventing zero queue depths', async () => {
-    const { inbound, followup, reconcile, aiSuggestions, dlq } = buildQueues({
-      fail: true,
-    });
+    const { inbound, followup, reconcile, aiSuggestions, outbound, dlq } =
+      buildQueues({
+        fail: true,
+      });
     const service = new AsyncMetricsService(
       inbound as never,
       {} as never,
       followup as never,
       reconcile as never,
       aiSuggestions as never,
+      outbound as never,
       dlq as never,
     );
 
@@ -64,19 +73,22 @@ describe('AsyncMetricsService', () => {
     expect(snap.followupScheduler).toBeNull();
     expect(snap.reconcileWorker).toBeNull();
     expect(snap.aiSuggestions).toBeNull();
+    expect(snap.outbound).toBeNull();
     expect(snap.dlqWhatsappInbound).toBeNull();
     expect(snap.reconcile.runs).toBe(0);
     expect(snap.ai).toEqual({ generated: 0, failed: 0, avgDuration: null });
   });
 
-  it('exposes reconcile + aiSuggestions counters', async () => {
-    const { inbound, followup, reconcile, aiSuggestions, dlq } = buildQueues();
+  it('exposes reconcile + aiSuggestions + outbound counters', async () => {
+    const { inbound, followup, reconcile, aiSuggestions, outbound, dlq } =
+      buildQueues();
     const service = new AsyncMetricsService(
       inbound as never,
       {} as never,
       followup as never,
       reconcile as never,
       aiSuggestions as never,
+      outbound as never,
       dlq as never,
     );
     service.recordReconcileRun({
@@ -87,6 +99,9 @@ describe('AsyncMetricsService', () => {
     service.recordAiGenerated(100);
     service.recordAiGenerated(200);
     service.recordAiFailed();
+    service.recordOutboundSent(50);
+    service.recordOutboundSent(150);
+    service.recordOutboundFailed();
 
     const snap = await service.snapshot();
     expect(snap.available).toBe(true);
@@ -95,6 +110,15 @@ describe('AsyncMetricsService', () => {
     );
     expect(snap.aiSuggestions).toEqual(
       expect.objectContaining({ waiting: 2, completed: 5 }),
+    );
+    expect(snap.outbound).toEqual(
+      expect.objectContaining({
+        waiting: 7,
+        completed: 9,
+        sent: 2,
+        failures: 1,
+        avgDuration: 100,
+      }),
     );
     expect(snap.reconcile).toEqual({
       runs: 1,

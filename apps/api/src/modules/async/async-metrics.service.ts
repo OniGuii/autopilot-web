@@ -5,6 +5,7 @@ import {
   QUEUE_AI_SUGGESTIONS,
   QUEUE_DLQ_WHATSAPP_INBOUND,
   QUEUE_FOLLOWUP_SCHEDULER,
+  QUEUE_OUTBOUND_SEND,
   QUEUE_RECONCILE_WORKER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
@@ -39,6 +40,13 @@ export type AiMetrics = {
   avgDuration: number | null;
 };
 
+/** 8C — outbound domain counters nested under queues.outbound.* */
+export type OutboundMetrics = QueueCounts & {
+  sent: number;
+  failures: number;
+  avgDuration: number | null;
+};
+
 export type QueueMetricsSnapshot = {
   /** false when Redis/Bull collection failed — never invent zeros. */
   available: boolean;
@@ -47,6 +55,8 @@ export type QueueMetricsSnapshot = {
   followupScheduler: QueueCounts | null;
   reconcileWorker: QueueCounts | null;
   aiSuggestions: QueueCounts | null;
+  /** Bull counts + sent/failures/avgDuration (queues.outbound.*) */
+  outbound: OutboundMetrics | null;
   dlq: DlqMetrics | null;
   /** Back-compat depth mirror; null when unavailable. */
   dlqWhatsappInbound: number | null;
@@ -77,6 +87,10 @@ export class AsyncMetricsService {
   private aiFailed = 0;
   private aiDurationSumMs = 0;
   private aiDurationSamples = 0;
+  private outboundSent = 0;
+  private outboundFailed = 0;
+  private outboundDurationSumMs = 0;
+  private outboundDurationSamples = 0;
 
   constructor(
     @InjectQueue(QUEUE_WHATSAPP_INBOUND)
@@ -89,6 +103,8 @@ export class AsyncMetricsService {
     private readonly reconcileWorker: Queue,
     @InjectQueue(QUEUE_AI_SUGGESTIONS)
     private readonly aiSuggestions: Queue,
+    @InjectQueue(QUEUE_OUTBOUND_SEND)
+    private readonly outboundSend: Queue,
     private readonly dlq: DlqService,
   ) {}
 
@@ -131,7 +147,27 @@ export class AsyncMetricsService {
     this.aiFailed += 1;
   }
 
+  recordOutboundSent(durationMs: number): void {
+    this.outboundSent += 1;
+    this.outboundDurationSumMs += durationMs;
+    this.outboundDurationSamples += 1;
+  }
+
+  recordOutboundFailed(): void {
+    this.outboundFailed += 1;
+  }
+
   async snapshot(): Promise<QueueMetricsSnapshot> {
+    const domainOutbound = {
+      sent: this.outboundSent,
+      failures: this.outboundFailed,
+      avgDuration:
+        this.outboundDurationSamples > 0
+          ? Math.round(
+              this.outboundDurationSumMs / this.outboundDurationSamples,
+            )
+          : null,
+    };
     const counters = {
       processingDurationP95Ms: this.p95DurationMs(),
       retriesTotal: this.retriesTotal,
@@ -160,6 +196,7 @@ export class AsyncMetricsService {
         followupCounts,
         reconcileCounts,
         aiCounts,
+        outboundCounts,
         dlqMetrics,
       ] = await Promise.all([
         this.inbound.getJobCounts(
@@ -190,6 +227,13 @@ export class AsyncMetricsService {
           'failed',
           'delayed',
         ),
+        this.outboundSend.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
         this.dlq.getMetrics(),
       ]);
 
@@ -199,6 +243,10 @@ export class AsyncMetricsService {
         followupScheduler: toCounts(followupCounts),
         reconcileWorker: toCounts(reconcileCounts),
         aiSuggestions: toCounts(aiCounts),
+        outbound: {
+          ...toCounts(outboundCounts),
+          ...domainOutbound,
+        },
         dlq: dlqMetrics,
         dlqWhatsappInbound: dlqMetrics.depth,
         ...counters,
@@ -213,6 +261,7 @@ export class AsyncMetricsService {
         followupScheduler: null,
         reconcileWorker: null,
         aiSuggestions: null,
+        outbound: null,
         dlq: null,
         dlqWhatsappInbound: null,
         ...counters,
