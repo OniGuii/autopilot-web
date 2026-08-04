@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
   QUEUE_DLQ_WHATSAPP_INBOUND,
+  QUEUE_FOLLOWUP_SCHEDULER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 import { DlqService } from './dlq.service';
@@ -28,6 +29,7 @@ export type QueueMetricsSnapshot = {
   available: boolean;
   error?: string;
   whatsappInbound: QueueCounts | null;
+  followupScheduler: QueueCounts | null;
   dlq: DlqMetrics | null;
   /** Back-compat depth mirror; null when unavailable. */
   dlqWhatsappInbound: number | null;
@@ -38,7 +40,7 @@ export type QueueMetricsSnapshot = {
 };
 
 /**
- * Bull/Ops metrics + in-process counters (7.1-H).
+ * Bull/Ops metrics + in-process counters.
  * Failures surface as available=false — never mask as zero counts.
  */
 @Injectable()
@@ -54,6 +56,8 @@ export class AsyncMetricsService {
     private readonly inbound: Queue,
     @InjectQueue(QUEUE_DLQ_WHATSAPP_INBOUND)
     private readonly dlqQueue: Queue,
+    @InjectQueue(QUEUE_FOLLOWUP_SCHEDULER)
+    private readonly followupScheduler: Queue,
     private readonly dlq: DlqService,
   ) {}
 
@@ -85,8 +89,15 @@ export class AsyncMetricsService {
 
     try {
       await this.dlq.cleanup();
-      const [inboundCounts, dlqMetrics] = await Promise.all([
+      const [inboundCounts, followupCounts, dlqMetrics] = await Promise.all([
         this.inbound.getJobCounts(
+          'waiting',
+          'active',
+          'completed',
+          'failed',
+          'delayed',
+        ),
+        this.followupScheduler.getJobCounts(
           'waiting',
           'active',
           'completed',
@@ -96,17 +107,10 @@ export class AsyncMetricsService {
         this.dlq.getMetrics(),
       ]);
 
-      const whatsappInbound: QueueCounts = {
-        waiting: inboundCounts.waiting ?? 0,
-        active: inboundCounts.active ?? 0,
-        completed: inboundCounts.completed ?? 0,
-        failed: inboundCounts.failed ?? 0,
-        delayed: inboundCounts.delayed ?? 0,
-      };
-
       return {
         available: true,
-        whatsappInbound,
+        whatsappInbound: toCounts(inboundCounts),
+        followupScheduler: toCounts(followupCounts),
         dlq: dlqMetrics,
         dlqWhatsappInbound: dlqMetrics.depth,
         ...counters,
@@ -118,6 +122,7 @@ export class AsyncMetricsService {
         available: false,
         error: message.slice(0, 500),
         whatsappInbound: null,
+        followupScheduler: null,
         dlq: null,
         dlqWhatsappInbound: null,
         ...counters,
@@ -140,4 +145,14 @@ export class AsyncMetricsService {
       this.durations = this.durations.slice(-DURATION_MAX_SAMPLES);
     }
   }
+}
+
+function toCounts(counts: Record<string, number>): QueueCounts {
+  return {
+    waiting: counts.waiting ?? 0,
+    active: counts.active ?? 0,
+    completed: counts.completed ?? 0,
+    failed: counts.failed ?? 0,
+    delayed: counts.delayed ?? 0,
+  };
 }

@@ -28,7 +28,9 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log'],
   });
   app.enableShutdownHooks();
-  logger.log('AutoPilot workers running (whatsapp-inbound)');
+  logger.log(
+    'AutoPilot workers running (whatsapp-inbound, followup-scheduler)',
+  );
 }
 
 void bootstrap();

@@ -3,11 +3,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
   QUEUE_DLQ_WHATSAPP_INBOUND,
+  QUEUE_FOLLOWUP_SCHEDULER,
   QUEUE_WHATSAPP_INBOUND,
 } from './async.constants';
 
 /**
- * 7.1-H — close Bull queues after workers drain
+ * Graceful shutdown — close Bull queues after workers drain
  * (workers implement BeforeApplicationShutdown).
  */
 @Injectable()
@@ -20,6 +21,8 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
     private readonly inbound: Queue,
     @InjectQueue(QUEUE_DLQ_WHATSAPP_INBOUND)
     private readonly dlq: Queue,
+    @InjectQueue(QUEUE_FOLLOWUP_SCHEDULER)
+    private readonly followupScheduler: Queue,
   ) {}
 
   async onApplicationShutdown(signal?: string): Promise<void> {
@@ -27,16 +30,16 @@ export class AsyncLifecycleService implements OnApplicationShutdown {
     this.shuttingDown = true;
     this.logger.log(`queue shutdown begin signal=${signal ?? 'unknown'}`);
 
-    try {
-      // Global pause — stop new jobs entering wait while workers finish.
-      await this.inbound.pause();
-    } catch (err) {
-      this.logger.warn(
-        `pause inbound failed: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+    await Promise.allSettled([
+      this.inbound.pause(),
+      this.followupScheduler.pause(),
+    ]);
 
-    await Promise.allSettled([this.inbound.close(), this.dlq.close()]);
+    await Promise.allSettled([
+      this.inbound.close(),
+      this.dlq.close(),
+      this.followupScheduler.close(),
+    ]);
     this.logger.log('queue shutdown complete');
   }
 }

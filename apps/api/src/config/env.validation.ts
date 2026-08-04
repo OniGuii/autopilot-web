@@ -112,4 +112,16 @@ export const envValidationSchema = Joi.object({
     .integer()
     .min(60_000)
     .default(5 * 60 * 1000),
+
+  /** 7.2A — FollowUp scheduler (default off = manual execute only). */
+  ASYNC_FOLLOWUP_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  FOLLOWUP_SCHEDULER_ATTEMPTS: Joi.number().integer().min(1).default(3),
+  FOLLOWUP_SCHEDULER_BACKOFF_MS: Joi.number().integer().min(100).default(5_000),
+  FOLLOWUP_SCHEDULER_CONCURRENCY: Joi.number().integer().min(1).default(5),
+  FOLLOWUP_SCHEDULER_SCAN_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(5_000)
+    .default(30_000),
+  FOLLOWUP_SCHEDULER_SCAN_BATCH: Joi.number().integer().min(1).default(50),
+  FOLLOWUP_SCHEDULER_BACKLOG_HIGH: Joi.number().integer().min(1).default(100),
 });

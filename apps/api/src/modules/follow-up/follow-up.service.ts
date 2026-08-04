@@ -6,7 +6,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Channel, FollowUp, FollowUpStatus, Prisma } from '@prisma/client';
+import {
+  Channel,
+  FollowUp,
+  FollowUpStatus,
+  MembershipRole,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
@@ -28,6 +34,7 @@ import {
   FOLLOWUP_EXECUTING_TIMEOUT_MS,
   FOLLOWUP_MAX_ATTEMPTS,
   FOLLOWUP_MESSAGE_SOURCE,
+  FOLLOWUP_SCHEDULER_SID,
 } from './follow-up.constants';
 
 type CompanyActor = AuthenticatedUser & { cid: string; sub: string };
@@ -98,7 +105,11 @@ export class FollowUpService {
     private readonly whatsappSend: WhatsappSendService,
   ) {}
 
-  async create(actor: CompanyActor, dto: CreateFollowUpDto, meta?: RequestMeta) {
+  async create(
+    actor: CompanyActor,
+    dto: CreateFollowUpDto,
+    meta?: RequestMeta,
+  ) {
     const companyId = actor.cid;
     await this.assertLeadInCompany(companyId, dto.leadId);
 
@@ -201,7 +212,9 @@ export class FollowUpService {
     }
 
     // P4-X1 lazy reconcile
-    followUp = (await this.reconcileExecutingTimeout(followUp)) as typeof followUp;
+    followUp = (await this.reconcileExecutingTimeout(
+      followUp,
+    )) as typeof followUp;
 
     return this.toResponse(followUp, {
       lead: followUp.lead,
@@ -308,8 +321,7 @@ export class FollowUpService {
       throw new ConflictException('Only SUGGESTED follow-ups can be approved');
     }
 
-    const scheduledAt =
-      dto.scheduledAt ?? existing.scheduledAt ?? new Date();
+    const scheduledAt = dto.scheduledAt ?? existing.scheduledAt ?? new Date();
 
     return this.prisma.$transaction(async (tx) => {
       const followUp = await tx.followUp.update({
@@ -506,9 +518,7 @@ export class FollowUpService {
     existing = await this.reconcileExecutingTimeout(existing);
 
     if (existing.status !== FollowUpStatus.SCHEDULED) {
-      throw new ConflictException(
-        'Only SCHEDULED follow-ups can be executed',
-      );
+      throw new ConflictException('Only SCHEDULED follow-ups can be executed');
     }
 
     return this.runWhatsAppSend(actor, existing, {
@@ -516,6 +526,166 @@ export class FollowUpService {
       isRetry: false,
       meta,
     });
+  }
+
+  /**
+   * 7.2A — worker entry for due SCHEDULED follow-ups.
+   * Reuses claim + WhatsappSendService path. Does not change public HTTP APIs.
+   *
+   * Outcomes:
+   * - executed / failed — domain terminal after claim
+   * - skipped_* — no domain mutation (or claim lost); job should complete
+   * - throws — only for pre-claim transient errors (Bull may retry)
+   */
+  async executeDue(input: {
+    companyId: string;
+    followUpId: string;
+    correlationId: string;
+  }): Promise<{
+    outcome:
+      | 'executed'
+      | 'failed'
+      | 'skipped_terminal'
+      | 'skipped_claim'
+      | 'skipped_not_due';
+    status?: FollowUpStatus;
+    correlationId: string;
+  }> {
+    const { companyId, followUpId, correlationId } = input;
+
+    let existing = await this.findActiveInCompany(companyId, followUpId);
+    existing = await this.reconcileExecutingTimeout(existing);
+
+    if (existing.status === FollowUpStatus.EXECUTED) {
+      return {
+        outcome: 'skipped_terminal',
+        status: existing.status,
+        correlationId,
+      };
+    }
+
+    if (
+      existing.status === FollowUpStatus.CANCELLED ||
+      existing.status === FollowUpStatus.REJECTED ||
+      existing.status === FollowUpStatus.SKIPPED ||
+      existing.status === FollowUpStatus.FAILED ||
+      existing.status === FollowUpStatus.EXECUTING
+    ) {
+      return {
+        outcome: 'skipped_terminal',
+        status: existing.status,
+        correlationId,
+      };
+    }
+
+    if (existing.status !== FollowUpStatus.SCHEDULED) {
+      return {
+        outcome: 'skipped_claim',
+        status: existing.status,
+        correlationId,
+      };
+    }
+
+    if (!existing.scheduledAt || existing.scheduledAt.getTime() > Date.now()) {
+      return {
+        outcome: 'skipped_not_due',
+        status: existing.status,
+        correlationId,
+      };
+    }
+
+    const actor = await this.resolveSchedulerActor(companyId, existing);
+
+    try {
+      const result = await this.runWhatsAppSend(actor, existing, {
+        fromStatus: FollowUpStatus.SCHEDULED,
+        isRetry: false,
+        meta: undefined,
+        correlationIdOverride: correlationId,
+      });
+      return {
+        outcome: 'executed',
+        status: FollowUpStatus.EXECUTED,
+        correlationId: result.metadata?.correlationId ?? correlationId,
+      };
+    } catch (error) {
+      if (
+        error instanceof ConflictException &&
+        error.message.includes('no longer executable')
+      ) {
+        return {
+          outcome: 'skipped_claim',
+          status: FollowUpStatus.SCHEDULED,
+          correlationId,
+        };
+      }
+
+      // Post-claim send failures are finalized as FAILED inside runWhatsAppSend
+      // and rethrown as BadGateway (or HttpException with status=FAILED body).
+      if (isPostClaimFollowUpFailure(error)) {
+        return {
+          outcome: 'failed',
+          status: FollowUpStatus.FAILED,
+          correlationId,
+        };
+      }
+
+      // Pre-claim validation / disconnected / CB OPEN / 404 — processor decides retry.
+      throw error;
+    }
+  }
+
+  /** Resolve a real user for Message.senderUserId / audit (FK-safe). */
+  private async resolveSchedulerActor(
+    companyId: string,
+    followUp: FollowUp,
+  ): Promise<CompanyActor> {
+    const candidateId = followUp.approvedBy ?? followUp.assignedUserId ?? null;
+
+    if (candidateId) {
+      const membership = await this.prisma.membership.findFirst({
+        where: {
+          companyId,
+          userId: candidateId,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        select: { id: true, userId: true, role: true },
+      });
+      if (membership) {
+        return {
+          sub: membership.userId,
+          sid: FOLLOWUP_SCHEDULER_SID,
+          cid: companyId,
+          mid: membership.id,
+          role: membership.role,
+        };
+      }
+    }
+
+    const owner = await this.prisma.membership.findFirst({
+      where: {
+        companyId,
+        role: MembershipRole.OWNER,
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, userId: true, role: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!owner) {
+      throw new ConflictException(
+        'No active OWNER membership for scheduler execute',
+      );
+    }
+
+    return {
+      sub: owner.userId,
+      sid: FOLLOWUP_SCHEDULER_SID,
+      cid: companyId,
+      mid: owner.id,
+      role: owner.role,
+    };
   }
 
   /**
@@ -551,6 +721,7 @@ export class FollowUpService {
       fromStatus: FollowUpStatus;
       isRetry: boolean;
       meta?: RequestMeta;
+      correlationIdOverride?: string;
     },
   ) {
     const companyId = actor.cid;
@@ -583,7 +754,8 @@ export class FollowUpService {
       );
     }
     const attempt = previousAttempts + 1;
-    const correlationId = newCorrelationId();
+    const correlationId =
+      opts.correlationIdOverride?.trim() || newCorrelationId();
 
     const claimed = await this.prisma.followUp.updateMany({
       where: {
@@ -758,7 +930,9 @@ export class FollowUpService {
   /**
    * P4-X1 — if EXECUTING longer than 5 minutes, mark FAILED (lazy).
    */
-  private async reconcileExecutingTimeout(followUp: FollowUp): Promise<FollowUp> {
+  private async reconcileExecutingTimeout(
+    followUp: FollowUp,
+  ): Promise<FollowUp> {
     if (followUp.status !== FollowUpStatus.EXECUTING) {
       return followUp;
     }
@@ -808,7 +982,7 @@ export class FollowUpService {
       typeof followUp.metadata === 'object' &&
       !Array.isArray(followUp.metadata)
     ) {
-      return followUp.metadata as FollowUpMeta;
+      return followUp.metadata;
     }
     return {};
   }
@@ -1012,4 +1186,15 @@ export class FollowUpService {
         : {}),
     };
   }
+}
+
+/** True when runWhatsAppSend already persisted FAILED after claim. */
+function isPostClaimFollowUpFailure(error: unknown): boolean {
+  if (!(error instanceof HttpException)) return false;
+  const res = error.getResponse();
+  if (typeof res !== 'object' || res === null) return false;
+  const body = res as { status?: unknown; followUpId?: unknown };
+  return (
+    body.status === FollowUpStatus.FAILED && typeof body.followUpId === 'string'
+  );
 }

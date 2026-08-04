@@ -88,7 +88,13 @@ describe('FollowUpService Phase 4', () => {
           leadId: 'lead-1',
         }),
       },
-      membership: { findFirst: jest.fn() },
+      membership: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'mem-1',
+          userId: 'user-1',
+          role: 'OWNER',
+        }),
+      },
       $transaction: jest.fn(async (fn: unknown) => {
         if (typeof fn === 'function') {
           return fn({
@@ -132,11 +138,18 @@ describe('FollowUpService Phase 4', () => {
 
     const service = new FollowUpService(
       prisma as never,
-      audit as never,
+      audit,
       whatsappSend as never,
     );
 
-    return { service, prisma, audit, whatsappSend, audits, getStored: () => stored };
+    return {
+      service,
+      prisma,
+      audit,
+      whatsappSend,
+      audits,
+      getStored: () => stored,
+    };
   }
 
   it('approve transitions SUGGESTED → SCHEDULED (P4-A1)', async () => {
@@ -178,7 +191,12 @@ describe('FollowUpService Phase 4', () => {
       },
     });
 
-    await service.reject(actor, 'fu-1', { reason: 'tom inadequado' }, undefined);
+    await service.reject(
+      actor,
+      'fu-1',
+      { reason: 'tom inadequado' },
+      undefined,
+    );
     const actions = audits.map((a) => (a as { action: string }).action);
     expect(actions).toContain('FOLLOWUP_REJECT');
     expect(actions).toContain('AI_SUGGESTION_REJECTED');
@@ -297,18 +315,15 @@ describe('FollowUpService Phase 4', () => {
     );
 
     const bad = build({ followUp: { status: FollowUpStatus.EXECUTED } });
-    await expect(
-      bad.service.cancel(actor, 'fu-1', {}),
-    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(bad.service.cancel(actor, 'fu-1', {})).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 
   it('tenant isolation — follow-up of other company is 404', async () => {
     const { service } = build();
     await expect(
-      service.execute(
-        { ...actor, cid: otherCompany } as never,
-        'fu-1',
-      ),
+      service.execute({ ...actor, cid: otherCompany } as never, 'fu-1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -319,5 +334,58 @@ describe('FollowUpService Phase 4', () => {
     await expect(service.execute(actor, 'fu-1')).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+
+  it('executeDue runs scheduled due follow-ups (7.2A)', async () => {
+    const past = new Date(Date.now() - 60_000);
+    const { service, whatsappSend, getStored } = build({
+      followUp: { scheduledAt: past },
+    });
+
+    const result = await service.executeDue({
+      companyId,
+      followUpId: 'fu-1',
+      correlationId: 'corr-sched-1',
+    });
+
+    expect(result.outcome).toBe('executed');
+    expect(getStored().status).toBe(FollowUpStatus.EXECUTED);
+    expect(whatsappSend.send).toHaveBeenCalledWith(
+      expect.objectContaining({ cid: companyId, sub: 'user-1' }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          correlationId: 'corr-sched-1',
+          source: 'followup',
+        }),
+      }),
+      undefined,
+    );
+  });
+
+  it('executeDue skips already EXECUTED (idempotent)', async () => {
+    const { service, whatsappSend } = build({
+      followUp: { status: FollowUpStatus.EXECUTED },
+    });
+    const result = await service.executeDue({
+      companyId,
+      followUpId: 'fu-1',
+      correlationId: 'corr-x',
+    });
+    expect(result.outcome).toBe('skipped_terminal');
+    expect(whatsappSend.send).not.toHaveBeenCalled();
+  });
+
+  it('executeDue throws on disconnected instance (non-retryable upstream)', async () => {
+    const { service } = build({
+      connected: false,
+      followUp: { scheduledAt: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      service.executeDue({
+        companyId,
+        followUpId: 'fu-1',
+        correlationId: 'corr-x',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

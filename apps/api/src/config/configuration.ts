@@ -119,6 +119,33 @@ export default () => {
         process.env.WEBHOOK_RECEIVED_STALE_MS ?? String(5 * 60 * 1000),
         10,
       ),
+      /** 7.2A — due FollowUp scanner + worker (default off). */
+      followupEnabled:
+        (process.env.ASYNC_FOLLOWUP_ENABLED ?? 'false') === 'true',
+      followupAttempts: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_ATTEMPTS ?? '3',
+        10,
+      ),
+      followupBackoffMs: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_BACKOFF_MS ?? '5000',
+        10,
+      ),
+      followupConcurrency: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_CONCURRENCY ?? '5',
+        10,
+      ),
+      followupScanIntervalMs: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_SCAN_INTERVAL_MS ?? '30000',
+        10,
+      ),
+      followupScanBatch: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_SCAN_BATCH ?? '50',
+        10,
+      ),
+      followupBacklogHigh: parseInt(
+        process.env.FOLLOWUP_SCHEDULER_BACKLOG_HIGH ?? '100',
+        10,
+      ),
     },
     apiPublicUrl: process.env.API_PUBLIC_URL ?? 'http://localhost:3001',
     jwt: {

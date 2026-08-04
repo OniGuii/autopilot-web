@@ -202,6 +202,16 @@ describe('OpsService', () => {
               failed: 0,
               delayed: 0,
             },
+      followupScheduler:
+        opts?.redisOk === false
+          ? null
+          : {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0,
+            },
       dlq: opts?.redisOk === false ? null : { depth: 0, oldestAgeMs: null },
       dlqWhatsappInbound: opts?.redisOk === false ? null : 0,
       processingDurationP95Ms: null,
@@ -265,6 +275,7 @@ describe('OpsService', () => {
           dlqWhatsappInbound: 0,
           dlqDepth: 0,
           whatsappInbound: expect.objectContaining({ waiting: 0 }),
+          followupScheduler: expect.objectContaining({ waiting: 0 }),
           retriesTotal: 0,
           stalledTotal: 0,
           claimFailuresTotal: 0,
@@ -285,6 +296,13 @@ describe('OpsService', () => {
           failed: 0,
           delayed: 0,
         },
+        followupScheduler: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
         dlq: { depth: 2, oldestAgeMs: 3_600_000 },
         dlqWhatsappInbound: 2,
         processingDurationP95Ms: 12,
@@ -299,6 +317,41 @@ describe('OpsService', () => {
     expect(codes).toContain('WEBHOOK_EVENT_STALE');
     expect(codes).toContain('QUEUE_DLQ_DEPTH');
     expect(codes).toContain('QUEUE_DLQ_STALE');
+  });
+
+  it('alerts FOLLOWUP_BACKLOG_HIGH and FOLLOWUP_STUCK_EXECUTING', async () => {
+    const { service } = build({
+      counts: { executingStale: 2 },
+      queueSnapshot: {
+        available: true,
+        whatsappInbound: {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        followupScheduler: {
+          waiting: 120,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+        },
+        dlq: { depth: 0, oldestAgeMs: null },
+        dlqWhatsappInbound: 0,
+        processingDurationP95Ms: null,
+        retriesTotal: 0,
+        stalledTotal: 0,
+        claimFailuresTotal: 0,
+      },
+    });
+
+    const result = await service.getAlerts(actor);
+    const codes = result.alerts.map((a) => a.code);
+    expect(codes).toContain('FOLLOWUP_BACKLOG_HIGH');
+    expect(codes).toContain('FOLLOWUP_STUCK_EXECUTING');
+    expect(codes).toContain('EXECUTING_FOLLOWUPS_STALE');
   });
 
   it('builds alerts when whatsapp disconnected and pending stale', async () => {
