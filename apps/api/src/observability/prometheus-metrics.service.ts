@@ -52,6 +52,13 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly prismaSlowQueriesTotal: Counter<string>;
 
   private httpWindow: { at: number; status: number; durationMs: number }[] = [];
+  /** 8B — in-process window of Prisma slow queries for Ops SLOW_QUERY alert */
+  private prismaSlowWindow: {
+    at: number;
+    model: string;
+    operation: string;
+    durationMs: number;
+  }[] = [];
 
   constructor(
     private readonly config: ConfigService,
@@ -306,6 +313,20 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
     );
     if (durationMs >= this.prismaSlowMs) {
       this.prismaSlowQueriesTotal.inc({ model: m, operation: op });
+      const now = Date.now();
+      this.prismaSlowWindow.push({
+        at: now,
+        model: m,
+        operation: op,
+        durationMs,
+      });
+      const cutoff = now - 15 * 60_000;
+      this.prismaSlowWindow = this.prismaSlowWindow.filter(
+        (s) => s.at >= cutoff,
+      );
+      if (this.prismaSlowWindow.length > 2_000) {
+        this.prismaSlowWindow = this.prismaSlowWindow.slice(-2_000);
+      }
     }
   }
 
@@ -334,6 +355,20 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       errors5xx,
       errorRate: total > 0 ? errors5xx / total : 0,
       p95Ms,
+    };
+  }
+
+  /** 8B — slow Prisma queries in the last 15 minutes (Ops SLOW_QUERY). */
+  getPrismaSlowWindowStats(): {
+    count: number;
+    thresholdMs: number;
+  } {
+    const now = Date.now();
+    const cutoff = now - 15 * 60_000;
+    this.prismaSlowWindow = this.prismaSlowWindow.filter((s) => s.at >= cutoff);
+    return {
+      count: this.prismaSlowWindow.length,
+      thresholdMs: this.prismaSlowMs,
     };
   }
 

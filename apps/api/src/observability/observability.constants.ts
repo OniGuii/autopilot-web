@@ -8,5 +8,9 @@ export const OBS_HIGH_LATENCY_MS_DEFAULT = 2_000;
 export const OBS_QUEUE_BACKLOG_HIGH_DEFAULT = 100;
 export const OBS_PRISMA_SLOW_MS_DEFAULT = 500;
 export const OBS_HTTP_ERROR_MIN_SAMPLES_DEFAULT = 20;
+/** Fase 8B — Ops alert thresholds for DB health */
+export const OBS_SLOW_QUERY_ALERT_MIN_DEFAULT = 5;
+export const OBS_FULL_TABLE_SCAN_SEQ_MIN_DEFAULT = 1_000;
+export const OBS_FULL_TABLE_SCAN_RATIO_DEFAULT = 10;
 
 export const METRICS_PATH = 'metrics';

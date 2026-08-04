@@ -6,6 +6,8 @@ import {
   WebhookEventStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithRlsBypassAsync } from '../../prisma/rls-context';
+import { runWithRequestContextAsync } from '../../observability/request-context';
 import { AuditService } from '../audit/audit.service';
 import { OpsService } from '../ops/ops.service';
 import { OPS_STALE_MS } from '../ops/ops.constants';
@@ -76,63 +78,65 @@ export class ReconcileCycleService {
         continue;
       }
 
-      // 1) Messages PENDING stale — Ops PENDING_TIMEOUT (echo heal needs inbound).
-      if (budget > 0) {
-        const msgResult = await this.ops.reconcileMessages(
-          actor,
-          true,
-          undefined,
-          budget,
-        );
-        itemsChecked += msgResult.encontrados;
-        messagesTimedOut += msgResult.corrigidos;
-        itemsFlagged += msgResult.corrigidos;
-        budget -= msgResult.encontrados;
-      }
-
-      // 2) FollowUps EXECUTING stale — mark suspect only (never touch EXECUTED).
-      if (budget > 0) {
-        const stuck = await this.prisma.followUp.findMany({
-          where: {
-            companyId,
-            deletedAt: null,
-            status: FollowUpStatus.EXECUTING,
-            updatedAt: { lt: staleBefore },
-          },
-          select: { id: true, metadata: true },
-          take: budget,
-          orderBy: { updatedAt: 'asc' },
-        });
-        itemsChecked += stuck.length;
-        for (const fu of stuck) {
-          const flagged = await this.flagFollowUpSuspect(companyId, fu);
-          if (flagged) {
-            followUpsSuspected += 1;
-            itemsFlagged += 1;
-          }
+      await runWithRequestContextAsync({ companyId }, async () => {
+        // 1) Messages PENDING stale — Ops PENDING_TIMEOUT (echo heal needs inbound).
+        if (budget > 0) {
+          const msgResult = await this.ops.reconcileMessages(
+            actor,
+            true,
+            undefined,
+            budget,
+          );
+          itemsChecked += msgResult.encontrados;
+          messagesTimedOut += msgResult.corrigidos;
+          itemsFlagged += msgResult.corrigidos;
+          budget -= msgResult.encontrados;
         }
-        budget -= stuck.length;
-      }
 
-      // 3) WebhookEvents RECEIVED stale — detect only (no replay).
-      if (budget > 0) {
-        const webhooks = await this.prisma.webhookEvent.findMany({
-          where: {
-            companyId,
-            deletedAt: null,
-            status: WebhookEventStatus.RECEIVED,
-            receivedAt: { lt: staleBefore },
-          },
-          select: { id: true },
-          take: budget,
-          orderBy: { receivedAt: 'asc' },
-        });
-        itemsChecked += webhooks.length;
-        staleWebhooks += webhooks.length;
-        // Flagged for metrics/alerts — no mutation / no replay.
-        itemsFlagged += webhooks.length;
-        budget -= webhooks.length;
-      }
+        // 2) FollowUps EXECUTING stale — mark suspect only (never touch EXECUTED).
+        if (budget > 0) {
+          const stuck = await this.prisma.followUp.findMany({
+            where: {
+              companyId,
+              deletedAt: null,
+              status: FollowUpStatus.EXECUTING,
+              updatedAt: { lt: staleBefore },
+            },
+            select: { id: true, metadata: true },
+            take: budget,
+            orderBy: { updatedAt: 'asc' },
+          });
+          itemsChecked += stuck.length;
+          for (const fu of stuck) {
+            const flagged = await this.flagFollowUpSuspect(companyId, fu);
+            if (flagged) {
+              followUpsSuspected += 1;
+              itemsFlagged += 1;
+            }
+          }
+          budget -= stuck.length;
+        }
+
+        // 3) WebhookEvents RECEIVED stale — detect only (no replay).
+        if (budget > 0) {
+          const webhooks = await this.prisma.webhookEvent.findMany({
+            where: {
+              companyId,
+              deletedAt: null,
+              status: WebhookEventStatus.RECEIVED,
+              receivedAt: { lt: staleBefore },
+            },
+            select: { id: true },
+            take: budget,
+            orderBy: { receivedAt: 'asc' },
+          });
+          itemsChecked += webhooks.length;
+          staleWebhooks += webhooks.length;
+          // Flagged for metrics/alerts — no mutation / no replay.
+          itemsFlagged += webhooks.length;
+          budget -= webhooks.length;
+        }
+      });
     }
 
     const queues = await this.metrics.snapshot();
@@ -167,44 +171,46 @@ export class ReconcileCycleService {
   ): Promise<string[]> {
     const staleBefore = new Date(Date.now() - OPS_STALE_MS);
     const [fromMessages, fromFollowUps, fromWebhooks, activeCompanies] =
-      await Promise.all([
-        this.prisma.message.findMany({
-          where: {
-            deletedAt: null,
-            status: OUTBOUND_MESSAGE_STATUS.PENDING,
-            createdAt: { lt: staleBefore },
-          },
-          select: { companyId: true },
-          distinct: ['companyId'],
-          take: limit,
-        }),
-        this.prisma.followUp.findMany({
-          where: {
-            deletedAt: null,
-            status: FollowUpStatus.EXECUTING,
-            updatedAt: { lt: staleBefore },
-          },
-          select: { companyId: true },
-          distinct: ['companyId'],
-          take: limit,
-        }),
-        this.prisma.webhookEvent.findMany({
-          where: {
-            deletedAt: null,
-            status: WebhookEventStatus.RECEIVED,
-            receivedAt: { lt: staleBefore },
-          },
-          select: { companyId: true },
-          distinct: ['companyId'],
-          take: limit,
-        }),
-        this.prisma.company.findMany({
-          where: { deletedAt: null, status: CompanyStatus.ACTIVE },
-          select: { id: true },
-          take: limit,
-          orderBy: { createdAt: 'asc' },
-        }),
-      ]);
+      await runWithRlsBypassAsync(() =>
+        Promise.all([
+          this.prisma.message.findMany({
+            where: {
+              deletedAt: null,
+              status: OUTBOUND_MESSAGE_STATUS.PENDING,
+              createdAt: { lt: staleBefore },
+            },
+            select: { companyId: true },
+            distinct: ['companyId'],
+            take: limit,
+          }),
+          this.prisma.followUp.findMany({
+            where: {
+              deletedAt: null,
+              status: FollowUpStatus.EXECUTING,
+              updatedAt: { lt: staleBefore },
+            },
+            select: { companyId: true },
+            distinct: ['companyId'],
+            take: limit,
+          }),
+          this.prisma.webhookEvent.findMany({
+            where: {
+              deletedAt: null,
+              status: WebhookEventStatus.RECEIVED,
+              receivedAt: { lt: staleBefore },
+            },
+            select: { companyId: true },
+            distinct: ['companyId'],
+            take: limit,
+          }),
+          this.prisma.company.findMany({
+            where: { deletedAt: null, status: CompanyStatus.ACTIVE },
+            select: { id: true },
+            take: limit,
+            orderBy: { createdAt: 'asc' },
+          }),
+        ]),
+      );
 
     const ids = new Set<string>();
     for (const row of fromMessages) ids.add(row.companyId);

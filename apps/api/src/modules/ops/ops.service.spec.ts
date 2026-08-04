@@ -23,6 +23,23 @@ describe('OpsService', () => {
     postgresOk?: boolean;
     redisOk?: boolean;
     queueSnapshot?: Record<string, unknown>;
+    seqScanRows?: Array<{
+      relname: string;
+      seq_scan: bigint;
+      idx_scan: bigint | null;
+    }>;
+    prom?: {
+      getHttpWindowStats?: () => {
+        total: number;
+        errors5xx: number;
+        errorRate: number;
+        p95Ms: number | null;
+      };
+      getPrismaSlowWindowStats?: () => {
+        count: number;
+        thresholdMs: number;
+      };
+    };
   }) {
     const counts = {
       totalMessages: 10,
@@ -139,8 +156,14 @@ describe('OpsService', () => {
           );
         }),
       },
-      $queryRaw: jest.fn().mockImplementation(async () => {
+      $queryRaw: jest.fn().mockImplementation(async (strings: unknown) => {
         if (opts?.postgresOk === false) throw new Error('db down');
+        const sql = Array.isArray(strings)
+          ? (strings as TemplateStringsArray).join(' ')
+          : '';
+        if (sql.includes('pg_stat_user_tables')) {
+          return opts?.seqScanRows ?? [];
+        }
         return [{ '?column?': 1 }];
       }),
       $transaction: jest.fn(async (arg: unknown) => {
@@ -262,6 +285,7 @@ describe('OpsService', () => {
       config as never,
       evolution as never,
       asyncMetrics as never,
+      opts?.prom as never,
     );
 
     // Patch redis check via prototype spy when needed
@@ -483,6 +507,36 @@ describe('OpsService', () => {
     expect(codes).toContain('PENDING_MESSAGES_STALE');
     expect(codes).toContain('FAILED_MESSAGES');
     expect(codes).toContain('OVERDUE_FOLLOWUPS');
+  });
+
+  it('alerts SLOW_QUERY and FULL_TABLE_SCAN (8B)', async () => {
+    const { service } = build({
+      prom: {
+        getHttpWindowStats: () => ({
+          total: 0,
+          errors5xx: 0,
+          errorRate: 0,
+          p95Ms: null,
+        }),
+        getPrismaSlowWindowStats: () => ({ count: 8, thresholdMs: 500 }),
+      },
+      seqScanRows: [
+        {
+          relname: 'messages',
+          seq_scan: BigInt(5_000),
+          idx_scan: BigInt(10),
+        },
+      ],
+    });
+
+    const result = await service.getAlerts(actor);
+    const codes = result.alerts.map((a) => a.code);
+    expect(codes).toContain('SLOW_QUERY');
+    expect(codes).toContain('FULL_TABLE_SCAN');
+    const slow = result.alerts.find((a) => a.code === 'SLOW_QUERY');
+    expect(slow?.count).toBe(8);
+    const scan = result.alerts.find((a) => a.code === 'FULL_TABLE_SCAN');
+    expect(scan?.count).toBe(1);
   });
 
   it('health returns ok when dependencies are up', async () => {

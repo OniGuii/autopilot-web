@@ -1,10 +1,11 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { createPrismaMetricsExtension } from '../observability/prisma-metrics.extension';
+import { createRlsSessionExtension } from './extensions/rls-session.extension';
 import { createSoftDeleteExtension } from './extensions/soft-delete.extension';
 import { createTenantExtension } from './extensions/tenant.extension';
 
-function createExtendedClient() {
+function createDomainClient() {
   return new PrismaClient()
     .$extends(createPrismaMetricsExtension())
     .$extends(
@@ -17,6 +18,11 @@ function createExtendedClient() {
         enforce: true,
       }),
     );
+}
+
+function createExtendedClient() {
+  const domain = createDomainClient();
+  return domain.$extends(createRlsSessionExtension(domain as never));
 }
 
 export type ExtendedPrismaClient = ReturnType<typeof createExtendedClient>;
@@ -38,8 +44,8 @@ function buildPrismaService(): PrismaServiceInstance {
 }
 
 /**
- * Nest injectable Prisma client with soft-delete + tenant + metrics extensions.
- * Typed as PrismaClient for existing services; runtime is extended.
+ * Nest injectable Prisma client:
+ * metrics + soft-delete + tenant + RLS session (SET LOCAL app.company_id).
  */
 @Injectable()
 export class PrismaService
