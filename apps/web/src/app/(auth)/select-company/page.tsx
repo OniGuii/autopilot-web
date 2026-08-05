@@ -26,7 +26,6 @@ function SelectCompanyContent() {
     try {
       await selectCompany(companySlug);
       toast.success("Empresa selecionada");
-      // Hard navigation so middleware sees autopilot_has_company cookie.
       navigateAfterAuth("/dashboard");
     } catch (error) {
       const message =
