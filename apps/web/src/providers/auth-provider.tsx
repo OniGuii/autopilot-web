@@ -100,8 +100,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const selectCompany = useCallback(
     async (companySlug: string) => {
-      await selectCompanyRequest(companySlug);
-      await refreshMe();
+      const data = await selectCompanyRequest(companySlug);
+      // Apply company immediately from select response so RequireAuth
+      // does not bounce to /select-company if a follow-up /me is slow.
+      setCompany(data.company);
+      setMembership(data.membership);
+      try {
+        await refreshMe();
+      } catch {
+        // Keep select-company context; bootstrap will retry /me later.
+      }
     },
     [refreshMe],
   );

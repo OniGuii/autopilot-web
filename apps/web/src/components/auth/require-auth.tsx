@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,17 +14,20 @@ export function RequireAuth({
   requireCompany?: boolean;
 }) {
   const { bootstrapping, user, hasCompany } = useAuth();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (bootstrapping) return;
     if (!user) {
-      navigateAfterAuth("/login");
+      if (pathname !== "/login") {
+        navigateAfterAuth("/login");
+      }
       return;
     }
-    if (requireCompany && !hasCompany) {
+    if (requireCompany && !hasCompany && pathname !== "/select-company") {
       navigateAfterAuth("/select-company");
     }
-  }, [bootstrapping, user, hasCompany, requireCompany]);
+  }, [bootstrapping, user, hasCompany, requireCompany, pathname]);
 
   if (bootstrapping || !user || (requireCompany && !hasCompany)) {
     return (
