@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,12 +27,24 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const { login, selectCompany } = useAuth();
+  const { login, selectCompany, bootstrapping, user, hasCompany } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "", password: "" },
   });
+
+  // If session already exists (e.g. bounce after toast), enter the app.
+  useEffect(() => {
+    if (bootstrapping || submitting) return;
+    if (user && hasCompany) {
+      navigateAfterAuth("/dashboard");
+      return;
+    }
+    if (user && !hasCompany) {
+      navigateAfterAuth("/select-company");
+    }
+  }, [bootstrapping, user, hasCompany, submitting]);
 
   async function onSubmit(values: FormValues) {
     setSubmitting(true);
@@ -47,6 +59,12 @@ export default function LoginPage() {
         return;
       }
 
+      if (memberships.length === 0) {
+        toast.error("Nenhuma empresa disponível para este usuário");
+        setSubmitting(false);
+        return;
+      }
+
       navigateAfterAuth("/select-company");
     } catch (error) {
       const message =
@@ -54,6 +72,14 @@ export default function LoginPage() {
       toast.error(message);
       setSubmitting(false);
     }
+  }
+
+  if (bootstrapping) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Carregando sessão…
+      </div>
+    );
   }
 
   return (
