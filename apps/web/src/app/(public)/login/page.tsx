@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/client";
+import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { useAuth } from "@/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +27,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { login } = useAuth();
+  const { login, selectCompany } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -40,16 +39,19 @@ export default function LoginPage() {
     try {
       const memberships = await login(values.email, values.password);
       toast.success("Login realizado");
+
       if (memberships.length === 1) {
-        router.replace("/select-company");
-      } else {
-        router.replace("/select-company");
+        await selectCompany(memberships[0].companySlug);
+        toast.success("Empresa selecionada");
+        navigateAfterAuth("/dashboard");
+        return;
       }
+
+      navigateAfterAuth("/select-company");
     } catch (error) {
       const message =
         error instanceof ApiError ? error.message : "Falha ao autenticar";
       toast.error(message);
-    } finally {
       setSubmitting(false);
     }
   }

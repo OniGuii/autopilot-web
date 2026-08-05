@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/client";
+import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { useAuth } from "@/providers/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 function SelectCompanyContent() {
-  const router = useRouter();
   const { memberships, selectCompany, logout, user } = useAuth();
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
 
@@ -27,12 +26,12 @@ function SelectCompanyContent() {
     try {
       await selectCompany(companySlug);
       toast.success("Empresa selecionada");
-      router.replace("/dashboard");
+      // Hard navigation so middleware sees autopilot_has_company cookie.
+      navigateAfterAuth("/dashboard");
     } catch (error) {
       const message =
         error instanceof ApiError ? error.message : "Falha ao selecionar empresa";
       toast.error(message);
-    } finally {
       setLoadingSlug(null);
     }
   }

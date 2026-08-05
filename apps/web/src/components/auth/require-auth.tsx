@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
+import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function RequireAuth({
@@ -12,19 +12,18 @@ export function RequireAuth({
   children: React.ReactNode;
   requireCompany?: boolean;
 }) {
-  const router = useRouter();
   const { bootstrapping, user, hasCompany } = useAuth();
 
   useEffect(() => {
     if (bootstrapping) return;
     if (!user) {
-      router.replace("/login");
+      navigateAfterAuth("/login");
       return;
     }
     if (requireCompany && !hasCompany) {
-      router.replace("/select-company");
+      navigateAfterAuth("/select-company");
     }
-  }, [bootstrapping, user, hasCompany, requireCompany, router]);
+  }, [bootstrapping, user, hasCompany, requireCompany]);
 
   if (bootstrapping || !user || (requireCompany && !hasCompany)) {
     return (
