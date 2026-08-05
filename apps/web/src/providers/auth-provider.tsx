@@ -8,7 +8,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import {
   loginRequest,
   logoutRequest,
@@ -21,6 +20,7 @@ import type {
   MembershipSummary,
   MeResponse,
 } from "@/lib/api/types";
+import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { getAccessToken } from "@/lib/auth/session";
 
 type AuthContextValue = {
@@ -40,7 +40,6 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [bootstrapping, setBootstrapping] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [memberships, setMemberships] = useState<MembershipSummary[]>([]);
@@ -113,8 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMemberships([]);
     setCompany(null);
     setMembership(null);
-    router.replace("/login");
-  }, [router]);
+    navigateAfterAuth("/login");
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
