@@ -43,3 +43,16 @@ export function updateLead(id: string, input: UpdateLeadInput) {
     body: input,
   });
 }
+
+export function assignLead(id: string, ownerId: string) {
+  return apiRequest<Lead>(endpoints.leads.assign(id), {
+    method: "POST",
+    body: { ownerId },
+  });
+}
+
+export function unassignLead(id: string) {
+  return apiRequest<Lead>(endpoints.leads.unassign(id), {
+    method: "POST",
+  });
+}

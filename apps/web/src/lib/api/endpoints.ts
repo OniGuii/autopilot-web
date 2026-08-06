@@ -13,6 +13,19 @@ export const endpoints = {
     list: "/api/leads",
     create: "/api/leads",
     byId: (id: string) => `/api/leads/${id}`,
+    timeline: (id: string) => `/api/leads/${id}/timeline`,
+    assign: (id: string) => `/api/leads/${id}/assign`,
+    unassign: (id: string) => `/api/leads/${id}/unassign`,
+    notes: (leadId: string) => `/api/leads/${leadId}/notes`,
+    note: (leadId: string, noteId: string) =>
+      `/api/leads/${leadId}/notes/${noteId}`,
+    activities: (leadId: string) => `/api/leads/${leadId}/activities`,
+    activity: (leadId: string, activityId: string) =>
+      `/api/leads/${leadId}/activities/${activityId}`,
+    activityComplete: (leadId: string, activityId: string) =>
+      `/api/leads/${leadId}/activities/${activityId}/complete`,
+    activityCancel: (leadId: string, activityId: string) =>
+      `/api/leads/${leadId}/activities/${activityId}/cancel`,
   },
   conversations: {
     list: "/api/conversations",
