@@ -505,3 +505,78 @@ export type ExportQuery = {
   to?: string;
   status?: string;
 };
+
+export type LeadNote = {
+  id: string;
+  companyId: string;
+  leadId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LeadActivityType =
+  | "CALL"
+  | "MEETING"
+  | "EMAIL"
+  | "VISIT"
+  | "OTHER";
+
+export type LeadActivityStatus = "PLANNED" | "DONE" | "CANCELLED";
+
+export type LeadActivity = {
+  id: string;
+  companyId: string;
+  leadId: string;
+  userId: string | null;
+  type: LeadActivityType;
+  status: LeadActivityStatus;
+  title: string;
+  body: string | null;
+  scheduledAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateLeadActivityInput = {
+  type: LeadActivityType;
+  title: string;
+  body?: string | null;
+  userId?: string | null;
+  scheduledAt?: string | null;
+};
+
+export type TimelineItemType =
+  | "LEAD_CREATED"
+  | "CONVERSATION_OPENED"
+  | "CONVERSATION_CLOSED"
+  | "MESSAGE_INBOUND"
+  | "MESSAGE_OUTBOUND"
+  | "FOLLOW_UP"
+  | "AI_SUGGESTION"
+  | "NOTE"
+  | "ACTIVITY"
+  | string;
+
+export type TimelineItem = {
+  id: string;
+  itemType: TimelineItemType;
+  occurredAt: string;
+  actorUserId: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+};
+
+export type TimelineResponse = {
+  leadId: string;
+  companyId: string;
+  items: TimelineItem[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
