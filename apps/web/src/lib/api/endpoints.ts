@@ -38,4 +38,32 @@ export const endpoints = {
     cancel: (id: string) => `/api/follow-ups/${id}/cancel`,
     retry: (id: string) => `/api/follow-ups/${id}/retry`,
   },
+  pipeline: {
+    get: "/api/pipeline",
+  },
+  memberships: {
+    list: "/api/memberships",
+    create: "/api/memberships",
+    byId: (id: string) => `/api/memberships/${id}`,
+  },
+  users: {
+    sessions: (id: string) => `/api/users/${id}/sessions`,
+    logoutAll: (id: string) => `/api/users/${id}/logout-all`,
+    revokeAccess: (id: string) => `/api/users/${id}/revoke-access`,
+  },
+  settings: {
+    company: "/api/settings/company",
+  },
+  setup: {
+    status: "/api/setup/status",
+    company: "/api/setup/company",
+  },
+  ops: {
+    diagnostics: "/api/ops/diagnostics",
+  },
+  exports: {
+    leads: "/api/exports/leads",
+    activities: "/api/exports/activities",
+    followups: "/api/exports/followups",
+  },
 } as const;

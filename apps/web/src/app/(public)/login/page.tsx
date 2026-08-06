@@ -27,7 +27,8 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const { login, selectCompany, bootstrapping, user, hasCompany } = useAuth();
+  const { login, selectCompany, bootstrapping, user, hasCompany, memberships } =
+    useAuth();
   const [submitting, setSubmitting] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -42,26 +43,28 @@ export default function LoginPage() {
       return;
     }
     if (user && !hasCompany) {
-      navigateAfterAuth("/select-company");
+      navigateAfterAuth(
+        memberships.length === 0 ? "/setup" : "/select-company",
+      );
     }
-  }, [bootstrapping, user, hasCompany, submitting]);
+  }, [bootstrapping, user, hasCompany, memberships.length, submitting]);
 
   async function onSubmit(values: FormValues) {
     setSubmitting(true);
     try {
-      const memberships = await login(values.email, values.password);
+      const nextMemberships = await login(values.email, values.password);
       toast.success("Login realizado");
 
-      if (memberships.length === 1) {
-        await selectCompany(memberships[0].companySlug);
-        toast.success("Empresa selecionada");
-        navigateAfterAuth("/dashboard");
+      if (nextMemberships.length === 0) {
+        toast.message("Crie sua empresa para começar");
+        navigateAfterAuth("/setup");
         return;
       }
 
-      if (memberships.length === 0) {
-        toast.error("Nenhuma empresa disponível para este usuário");
-        setSubmitting(false);
+      if (nextMemberships.length === 1) {
+        await selectCompany(nextMemberships[0].companySlug);
+        toast.success("Empresa selecionada");
+        navigateAfterAuth("/dashboard");
         return;
       }
 

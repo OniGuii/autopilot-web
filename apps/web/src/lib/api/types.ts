@@ -334,3 +334,174 @@ export type RejectFollowUpInput = {
 export type RescheduleFollowUpInput = {
   scheduledAt: string;
 };
+
+export type MembershipStatus = "INVITED" | "ACTIVE" | "REVOKED";
+export type UserStatus = "PENDING" | "ACTIVE" | "DISABLED";
+export type CompanyCurrency = "BRL" | "USD" | "EUR";
+
+export type CompanyMembership = {
+  id: string;
+  userId: string;
+  email: string;
+  name: string;
+  userStatus: UserStatus;
+  role: MembershipRole;
+  status: MembershipStatus | string;
+  joinedAt: string | null;
+  createdAt: string;
+};
+
+export type ListMembershipsQuery = {
+  role?: MembershipRole;
+  status?: MembershipStatus | string;
+  page?: number;
+  limit?: number;
+};
+
+export type CreateMembershipInput = {
+  email: string;
+  name?: string;
+  role: MembershipRole;
+};
+
+export type CreateMembershipResponse = CompanyMembership & {
+  invite: {
+    status: "PENDING_INVITE";
+    email: string;
+    delivery: "NONE";
+    userCreated: boolean;
+  };
+};
+
+export type UpdateMembershipInput = {
+  role: MembershipRole;
+};
+
+export type RevokeMembershipResponse = {
+  id: string;
+  status: "REVOKED";
+  revokedSessions: number;
+};
+
+export type UserSession = {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  ip: string | null;
+  userAgent: string | null;
+  membershipId: string | null;
+  current: boolean;
+};
+
+export type UserSessionsResponse = {
+  items: UserSession[];
+};
+
+export type LogoutAllResponse = {
+  ok: true;
+  revokedSessions: number;
+};
+
+export type CompanySettings = {
+  id: string;
+  name: string;
+  slug: string | null;
+  timezone: string;
+  locale: string;
+  businessHours: Record<string, unknown> | null;
+  logoUrl: string | null;
+  currency: CompanyCurrency;
+  updatedAt: string;
+};
+
+export type UpdateCompanySettingsInput = {
+  name?: string;
+  slug?: string;
+  timezone?: string;
+  locale?: string;
+  businessHours?: Record<string, unknown> | null;
+  logoUrl?: string | null;
+  currency?: CompanyCurrency;
+};
+
+export type SetupStepKey = "company" | "whatsapp" | "firstLead" | "firstMessage";
+
+export type SetupStatus = {
+  steps: Array<{
+    key: SetupStepKey;
+    done: boolean;
+    detail?: string;
+  }>;
+  complete: boolean;
+};
+
+export type CreateSetupCompanyInput = {
+  name: string;
+  slug?: string;
+  timezone?: string;
+  locale?: string;
+};
+
+export type CreateSetupCompanyResponse = {
+  company: {
+    id: string;
+    name: string;
+    slug: string;
+    timezone: string;
+    locale: string;
+    currency: CompanyCurrency;
+  };
+  membership: {
+    id: string;
+    role: "OWNER";
+    status: "ACTIVE";
+  };
+  next: {
+    selectCompany: {
+      method: "POST";
+      path: "/api/auth/select-company";
+      body: { companySlug: string };
+    };
+  };
+};
+
+export type DiagnosticCheckStatus = "ok" | "degraded" | "error" | "skipped";
+
+export type DiagnosticCheck = {
+  status: DiagnosticCheckStatus;
+  latencyMs?: number;
+  detail?: string;
+};
+
+export type DiagnosticsResponse = {
+  status: "ok" | "degraded" | "error";
+  scope: "full" | "limited";
+  checks: {
+    postgres: DiagnosticCheck;
+    redis: DiagnosticCheck;
+    whatsapp: DiagnosticCheck;
+    workers?: DiagnosticCheck;
+    openai?: DiagnosticCheck;
+  };
+  generatedInMs: number;
+  timestamp: string;
+};
+
+export type PipelineResponse = {
+  companyId: string;
+  generatedAt: string;
+  period: { from: string | null; to: string | null };
+  leadsByStage: Record<LeadStatus, number>;
+  conversionByStage: Record<string, number> | null;
+  avgTimeInStageMs: Record<string, number | null> | null;
+  leadsWithoutContact: number;
+  leadsUnassigned: number;
+};
+
+export type ExportKind = "leads" | "activities" | "followups";
+
+export type ExportQuery = {
+  from?: string;
+  to?: string;
+  status?: string;
+};
