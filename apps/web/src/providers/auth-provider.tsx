@@ -21,7 +21,9 @@ import type {
   MeResponse,
 } from "@/lib/api/types";
 import { navigateAfterAuth } from "@/lib/auth/navigate";
-import { getAccessToken } from "@/lib/auth/session";
+import { clearSession, getAccessToken } from "@/lib/auth/session";
+
+const BOOTSTRAP_TIMEOUT_MS = 6_000;
 
 type AuthContextValue = {
   bootstrapping: boolean;
@@ -68,22 +70,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    const finish = () => {
+      if (!cancelled) setBootstrapping(false);
+    };
+
+    const resetLocal = () => {
+      setUser(null);
+      setMemberships([]);
+      setCompany(null);
+      setMembership(null);
+    };
+
     (async () => {
       try {
-        if (getAccessToken()) {
-          await refreshMe();
+        if (!getAccessToken()) {
+          finish();
+          return;
         }
+
+        await Promise.race([
+          refreshMe(),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => {
+              reject(new Error("BOOTSTRAP_TIMEOUT"));
+            }, BOOTSTRAP_TIMEOUT_MS);
+          }),
+        ]);
       } catch {
         if (!cancelled) {
-          setUser(null);
-          setMemberships([]);
-          setCompany(null);
-          setMembership(null);
+          // Stale/invalid token or hung /auth/me must not block the UI forever.
+          clearSession();
+          resetLocal();
         }
       } finally {
-        if (!cancelled) setBootstrapping(false);
+        finish();
       }
     })();
+
     return () => {
       cancelled = true;
     };
