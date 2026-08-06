@@ -1,0 +1,220 @@
+[
+  {
+    "id": "login",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/login",
+    "title": "Autopilot CRM",
+    "text": "Autopilot\n\nEntre para operar leads e acompanhar o dashboard da sua empresa.\n\nEntrar\n\nUse as credenciais provisionadas no ambiente da API.\n\nE-mail\nSenha\nContinuar"
+  },
+  {
+    "id": "select-company",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/select-company",
+    "text": "Autopilot\n\nSelecione a empresa\n\nOlá, Owner Local. Escolha o contexto (slug) para continuar.\n\nAutoPilot Local\n\nlocal-demo\n\nOWNER\nEntrar"
+  },
+  {
+    "id": "03-dashboard",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/dashboard",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nDashboard\n\nAtualizado em 06/08/2026 02:03\n\nAbrir leads\n\nTotal de leads\n\n51\n\nConversas abertas\n\n42\n\nFollow-ups pendentes\n\n53\nLeads por status\n\nTaxa de conversão: 15.7%\n\nNovo\n10\nContatado\n9\nRespondeu\n8\nQualificado\n8\nConvertido\n8\nPerdido\n8\nResumo"
+  },
+  {
+    "id": "04-leads",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/leads",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nLeads\n\nLista paginada via `GET /api/leads`\n\nNovo lead\nFiltros\n\nBusca por nome/telefone e status\n\nTodos os status\nAtualizar\nNome\tTelefone\tStatus\tOrigem\tAtualizado\nLead Sprint1 Validacao\t+55 (11) 98877-6655\tNovo\tWEB\t04/08/2026 20:07\nAlex Local 5"
+  },
+  {
+    "id": "05-lead-detail",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/leads/923a0ce1-adfc-4cf7-b3c5-4644a4c3e754",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\n← Voltar\nLead Sprint1 Validacao\nNovo\n+55 (11) 98877-6655\n·\nAtualizado 04/08/2026 20:07\nConversas\nFollow-ups\nEditar lead\n\n`PATCH /api/leads/:id`\n\nNome\nTelefone\nE-mail\nOrigem\nStatus\nNovo\nNovo\nContatado\nRespondeu\nQualificado\nConvertido\nPerdido\nSc"
+  },
+  {
+    "id": "06-conversations",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/conversations",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nConversas\n\nInbox via `GET /api/conversations`\n\nNova conversa\n\n`POST /api/conversations` com leadId\n\nAbrir conversa\nFiltros\nTodos\nAtualizar\nLead\tTelefone\tStatus\tCanal\tÚltima msg\nLead Sprint1 Validacao\t+55 (11) 98877-6655\tAberta\tWHATSAPP\t04/08/2"
+  },
+  {
+    "id": "07-conversation-detail",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/conversations/756ebb7f-8bd4-4df0-a1bf-5c36bb211bc7",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\n← Inbox\nLead Sprint1 Validacao\nAberta\n+55 (11) 98877-6655\n·\nVer lead\n·\nQR pendente\nFollow-ups\nFechar\nTimeline de mensagens\n\nÚltimas 50 mensagens (`GET /api/conversations/:id`)\n\nMensagem Sprint2 validacao\n\nOUTBOUND · 04/08/2026 20:24\n\nCRM (`/me"
+  },
+  {
+    "id": "08-follow-ups",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/follow-ups",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nFollow-ups\n\nLista via `GET /api/follow-ups`\n\nFiltros\n\nStatus e paginação\n\nTodos\nAtualizar\nLead\tStatus\tTipo\tAgendado\tSugestão\nCaio Local 2\n\n(15) 55100-0002\n\n\tSugerido\tRECOVERY\t04/08/2026 20:07\t[SEED:local-2-SUGGESTED] Follow-up fake de recupera"
+  },
+  {
+    "id": "09-follow-up-detail",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/follow-ups/65b1a866-f7be-41cc-8e75-9b510f3f6f85",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\n← Follow-ups\nCaio Local 2\nSugerido\n\n(15) 55100-0002 · tipo RECOVERY · tentativas 0\n\nDetalhes\n\n`GET /api/follow-ups/:id`\n\nTexto sugerido\n\n[SEED:local-2-SUGGESTED] Follow-up fake de recuperação — perfil local\n\nAgendado\n\n04/08/2026 20:07\n\nExecuta"
+  },
+  {
+    "id": "10-whatsapp",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/whatsapp",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nWhatsApp\n\nConexão e status da instância Evolution (`/api/whatsapp/*`)\n\nStatus da conexão\n\n`GET /api/whatsapp/status` · Connect/Disconnect: OWNER|ADMIN\n\nQR pendente\nap601f9bf268204d8f9597dab1a0984223\n\nTelefone\n\n—\n\nConectado em\n\n—\n\nInstance key\n"
+  },
+  {
+    "id": "11-pipeline",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/pipeline",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nPipeline\n\nFunil por status · 06/08/2026 02:03\n\nSem contato\n\n10\n\nSem responsável\n\n1\n\nNovo\n\n10\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: 29.9 h\n\nContatado\n\n9\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: —\n\nRespondeu\n\n8\n\n"
+  },
+  {
+    "id": "12-team",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/team",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nTeam\n\nMemberships da empresa (`/api/memberships`)\n\nACTIVE\nConvidar membro\n\nOwner Local(você)\n\nowner@local.autopilot.dev\n\nOWNER\nACTIVE\ndesde 04/08/2026 20:07\n\nAdmin Local\n\nadmin@local.autopilot.dev\n\nADMIN\nACTIVE\ndesde 04/08/2026 20:07\nADMIN\nRem"
+  },
+  {
+    "id": "13-users",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/users",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nUsers\n\nAdministração por usuário (sessões / logout-all / revoke-access). A API não expõe listagem de users — usamos memberships.\n\nOwner Local\n\nowner@local.autopilot.dev\n\nOWNER\nACTIVE\nuser: ACTIVE\nSessões\nEncerrar sessões\nRevogar acesso\n\nAdmin "
+  },
+  {
+    "id": "14-settings",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/settings",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nSettings\n\nConfigurações da empresa (`/api/settings/company`)\n\nIdentidade\n\nNome, logo e locale\n\nNome\nSlug\nLocale\nLogo URL (HTTPS)\nTimezone\nCurrency\nBRL\nBRL\nUSD\nEUR\nBusiness hours\n\nHorário semanal (JSON livre na API — UI padroniza open/close)\n\nM"
+  },
+  {
+    "id": "15-exports",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/exports",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nExports\n\nDownloads CSV (OWNER/ADMIN) — limite 10.000 linhas na API\n\nFiltro opcional\n\nIntervalo enviado como `from` / `to`\n\nDe\nAté\nLeads\n\nCSV de leads da empresa\n\nGET /api/exports/leads\n\nBaixar CSV\nActivities\n\nCSV de atividades de leads\n\nGET /a"
+  },
+  {
+    "id": "16-diagnostics",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/diagnostics",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nDiagnostics\n\nSaúde dos componentes · 06/08/2026 02:04 · 3 ms\n\nscope: full\nDegraded\nAtualizar\nPostgres\n\nOk\n\nLatência: 1 ms\n\nRedis\n\nOk\n\nLatência: 1 ms\n\nOpenAI\n\nSkipped\n\nOPENAI_API_KEY_MISSING\n\nWhatsApp\n\nDegraded\n\nLatência: 2 ms\n\nNOT_CONNECTED\n\nW"
+  },
+  {
+    "id": "17-setup",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/setup",
+    "text": "Autopilot\n\nCRM SaaS · Sprint 3\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\n\nEmpresa ativa: AutoPilot Local\n\nOWNER\nSetup\n\nConfigure a empresa sem SQL ou seeds — só pela API.\n\nEmpresa\nEquipe\nWhatsApp\nConclusão\n2. Equipe\n\nConvide pelo menos um colega (opcional) via `POST /api/memberships`\n\nE-mail\nNome\nRole\nAGENT\nOWNER\nADMIN\nAGENT\nConvidar\nVoltar\nPular / Cont"
+  },
+  {
+    "id": "logout",
+    "viewport": "desktop",
+    "url": "http://localhost:3000/login",
+    "text": "Autopilot\n\nEntre para operar leads e acompanhar o dashboard da sua empresa.\n\nEntrar\n\nUse as credenciais provisionadas no ambiente da API.\n\nE-mail\nSenha\nContinuar"
+  },
+  {
+    "id": "login",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/login",
+    "title": "Autopilot CRM",
+    "text": "Autopilot\n\nEntre para operar leads e acompanhar o dashboard da sua empresa.\n\nEntrar\n\nUse as credenciais provisionadas no ambiente da API.\n\nE-mail\nSenha\nContinuar"
+  },
+  {
+    "id": "select-company",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/select-company",
+    "text": "Autopilot\n\nSelecione a empresa\n\nOlá, Owner Local. Escolha o contexto (slug) para continuar.\n\nAutoPilot Local\n\nlocal-demo\n\nOWNER\nEntrar"
+  },
+  {
+    "id": "03-dashboard",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/dashboard",
+    "text": "Autopilot\n\nOWNER\n\nAutopilot\n\nOPERAÇÃO\n\nDashboard\nLeads\nConversations\nFollowUps\nWhatsApp\nPipeline\n\nADMINISTRAÇÃO\n\nTeam\nUsers\nSettings\nExports\nDiagnostics\nSetup\n\nAutoPilot Local\n\nowner@local.autopilot.dev\n\nOWNER\nSair\nDashboard\n\nAtualizado em 06/08/2026 02:04\n\nAbrir leads\n\nTotal de leads\n\n51\n\nConversas abertas\n\n42\n\nFollow-ups pendentes\n\n53\nLeads por status\n\nTaxa de conversão: 15.7%\n\nNovo\n10\nContatado\n9\nRespondeu\n8\nQualificado\n8\nConvertido\n8\nPerdido\n8\nResumo operacional\n\nKPIs do período atual da API"
+  },
+  {
+    "id": "04-leads",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/leads",
+    "text": "Autopilot\n\nOWNER\nLeads\n\nLista paginada via `GET /api/leads`\n\nNovo lead\nFiltros\n\nBusca por nome/telefone e status\n\nTodos os status\nAtualizar\nNome\tTelefone\tStatus\tOrigem\tAtualizado\nLead Sprint1 Validacao\t+55 (11) 98877-6655\tNovo\tWEB\t04/08/2026 20:07\nAlex Local 50\t(15) 55100-0050\tContatado\tWHATSAPP\t04/08/2026 20:24\nJulia Local 49\t(15) 55100-0049\tNovo\tWHATSAPP\t04/08/2026 20:24\nIgor Local 48\t(15) 55100-0048\tPerdido\tWHATSAPP\t04/08/2026 20:24\nHelena Local 47\t(15) 55100-0047\tConvertido\tWHATSAPP\t04/08/20"
+  },
+  {
+    "id": "05-lead-detail",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/leads/923a0ce1-adfc-4cf7-b3c5-4644a4c3e754",
+    "text": "Autopilot\n\nOWNER\n← Voltar\nLead Sprint1 Validacao\nNovo\n+55 (11) 98877-6655\n·\nAtualizado 04/08/2026 20:07\nConversas\nFollow-ups\nEditar lead\n\n`PATCH /api/leads/:id`\n\nNome\nTelefone\nE-mail\nOrigem\nStatus\nNovo\nNovo\nContatado\nRespondeu\nQualificado\nConvertido\nPerdido\nScore\nSalvar alterações"
+  },
+  {
+    "id": "06-conversations",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/conversations",
+    "text": "Autopilot\n\nOWNER\nConversas\n\nInbox via `GET /api/conversations`\n\nNova conversa\n\n`POST /api/conversations` com leadId\n\nAbrir conversa\nFiltros\nTodos\nAtualizar\nLead\tTelefone\tStatus\tCanal\tÚltima msg\nLead Sprint1 Validacao\t+55 (11) 98877-6655\tAberta\tWHATSAPP\t04/08/2026 20:24\nAlex Local 50\t(15) 55100-0050\tAberta\tWHATSAPP\t04/08/2026 20:24\nIgor Local 48\t(15) 55100-0048\tAberta\tWHATSAPP\t04/08/2026 20:24\nHelena Local 47\t(15) 55100-0047\tAberta\tWHATSAPP\t04/08/2026 20:24\nGabriel Local 46\t(15) 55100-0046\tAberta"
+  },
+  {
+    "id": "07-conversation-detail",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/conversations/756ebb7f-8bd4-4df0-a1bf-5c36bb211bc7",
+    "text": "Autopilot\n\nOWNER\n← Inbox\nLead Sprint1 Validacao\nAberta\n+55 (11) 98877-6655\n·\nVer lead\n·\nQR pendente\nFollow-ups\nFechar\nTimeline de mensagens\n\nÚltimas 50 mensagens (`GET /api/conversations/:id`)\n\nMensagem Sprint2 validacao\n\nOUTBOUND · 04/08/2026 20:24\n\nCRM (`/messages`)\nWhatsApp (`/whatsapp/send`)\nWhatsApp precisa estar CONNECTED — conectar\nEnviar\nCriar follow-up\n\n`POST /api/follow-ups` (status inicial SUGGESTED)\n\nCriar follow-up"
+  },
+  {
+    "id": "08-follow-ups",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/follow-ups",
+    "text": "Autopilot\n\nOWNER\nFollow-ups\n\nLista via `GET /api/follow-ups`\n\nFiltros\n\nStatus e paginação\n\nTodos\nAtualizar\nLead\tStatus\tTipo\tAgendado\tSugestão\nCaio Local 2\n\n(15) 55100-0002\n\n\tSugerido\tRECOVERY\t04/08/2026 20:07\t[SEED:local-2-SUGGESTED] Follow-up fake de recuperação — perfil local\nCaio Local 2\n\n(15) 55100-0002\n\n\tAprovado\tRECOVERY\t04/08/2026 20:07\t[SEED:local-2-APPROVED] Follow-up fake de recuperação — perfil local\nCaio Local 2\n\n(15) 55100-0002\n\n\tExecutado\tREMINDER\t04/08/2026 20:07\t[SEED:local-2-EXE"
+  },
+  {
+    "id": "09-follow-up-detail",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/follow-ups/65b1a866-f7be-41cc-8e75-9b510f3f6f85",
+    "text": "Autopilot\n\nOWNER\n← Follow-ups\nCaio Local 2\nSugerido\n\n(15) 55100-0002 · tipo RECOVERY · tentativas 0\n\nDetalhes\n\n`GET /api/follow-ups/:id`\n\nTexto sugerido\n\n[SEED:local-2-SUGGESTED] Follow-up fake de recuperação — perfil local\n\nAgendado\n\n04/08/2026 20:07\n\nExecutado\n\n—\n\nLead\nConversa\nAprovar\n\n`POST /approve` → SCHEDULED\n\nAgendar para\nAprovar\nRejeitar\n\n`POST /reject` (motivo obrigatório)\n\nRejeitar"
+  },
+  {
+    "id": "10-whatsapp",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/whatsapp",
+    "text": "Autopilot\n\nOWNER\nWhatsApp\n\nConexão e status da instância Evolution (`/api/whatsapp/*`)\n\nStatus da conexão\n\n`GET /api/whatsapp/status` · Connect/Disconnect: OWNER|ADMIN\n\nQR pendente\nap601f9bf268204d8f9597dab1a0984223\n\nTelefone\n\n—\n\nConectado em\n\n—\n\nInstance key\n\n601f9bf2-6820-4d8f-9597-dab1a0984223\n\nEscaneie o QR Code no WhatsApp\n\nConectar / Reconectar\nDesconectar"
+  },
+  {
+    "id": "11-pipeline",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/pipeline",
+    "text": "Autopilot\n\nOWNER\nPipeline\n\nFunil por status · 06/08/2026 02:05\n\nSem contato\n\n10\n\nSem responsável\n\n1\n\nNovo\n\n10\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: 30.0 h\n\nContatado\n\n9\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: —\n\nRespondeu\n\n8\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: —\n\nQualificado\n\n8\n\nConversão p/ convertido: 0.0%\n\nTempo médio no estágio: —\n\nConvertido\n\n8\n\nConversão p/ convertido: —\n\nTempo médio no estágio: —\n\nPerdido\n\n8\n\nConversão p/ convertido: —"
+  },
+  {
+    "id": "12-team",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/team",
+    "text": "Autopilot\n\nOWNER\nTeam\n\nMemberships da empresa (`/api/memberships`)\n\nACTIVE\nConvidar membro\n\nOwner Local(você)\n\nowner@local.autopilot.dev\n\nOWNER\nACTIVE\ndesde 04/08/2026 20:07\n\nAdmin Local\n\nadmin@local.autopilot.dev\n\nADMIN\nACTIVE\ndesde 04/08/2026 20:07\nADMIN\nRemover\n\nAgent Local\n\nagent@local.autopilot.dev\n\nAGENT\nACTIVE\ndesde 04/08/2026 20:07\nAGENT\nRemover"
+  },
+  {
+    "id": "13-users",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/users",
+    "text": "Autopilot\n\nOWNER\nUsers\n\nAdministração por usuário (sessões / logout-all / revoke-access). A API não expõe listagem de users — usamos memberships.\n\nOwner Local\n\nowner@local.autopilot.dev\n\nOWNER\nACTIVE\nuser: ACTIVE\nSessões\nEncerrar sessões\nRevogar acesso\n\nAdmin Local\n\nadmin@local.autopilot.dev\n\nADMIN\nACTIVE\nuser: ACTIVE\nSessões\nEncerrar sessões\nRevogar acesso\n\nAgent Local\n\nagent@local.autopilot.dev\n\nAGENT\nACTIVE\nuser: ACTIVE\nSessões\nEncerrar sessões\nRevogar acesso"
+  },
+  {
+    "id": "14-settings",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/settings",
+    "text": "Autopilot\n\nOWNER\nSettings\n\nConfigurações da empresa (`/api/settings/company`)\n\nIdentidade\n\nNome, logo e locale\n\nNome\nSlug\nLocale\nLogo URL (HTTPS)\nTimezone\nCurrency\nBRL\nBRL\nUSD\nEUR\nBusiness hours\n\nHorário semanal (JSON livre na API — UI padroniza open/close)\n\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday\nSalvar"
+  },
+  {
+    "id": "15-exports",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/exports",
+    "text": "Autopilot\n\nOWNER\nExports\n\nDownloads CSV (OWNER/ADMIN) — limite 10.000 linhas na API\n\nFiltro opcional\n\nIntervalo enviado como `from` / `to`\n\nDe\nAté\nLeads\n\nCSV de leads da empresa\n\nGET /api/exports/leads\n\nBaixar CSV\nActivities\n\nCSV de atividades de leads\n\nGET /api/exports/activities\n\nBaixar CSV\nFollow-ups\n\nCSV de follow-ups\n\nGET /api/exports/followups\n\nBaixar CSV"
+  },
+  {
+    "id": "16-diagnostics",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/diagnostics",
+    "text": "Autopilot\n\nOWNER\nDiagnostics\n\nSaúde dos componentes · 06/08/2026 02:05 · 6 ms\n\nscope: full\nDegraded\nAtualizar\nPostgres\n\nOk\n\nLatência: 4 ms\n\nRedis\n\nOk\n\nLatência: 1 ms\n\nOpenAI\n\nSkipped\n\nOPENAI_API_KEY_MISSING\n\nWhatsApp\n\nDegraded\n\nLatência: 6 ms\n\nNOT_CONNECTED\n\nWorkers\n\nOk\n\n{\"dlqDepth\":0,\"inboundWaiting\":0}"
+  },
+  {
+    "id": "17-setup",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/setup",
+    "text": "Autopilot\n\nOWNER\nSetup\n\nConfigure a empresa sem SQL ou seeds — só pela API.\n\nEmpresa\nEquipe\nWhatsApp\nConclusão\n2. Equipe\n\nConvide pelo menos um colega (opcional) via `POST /api/memberships`\n\nE-mail\nNome\nRole\nAGENT\nOWNER\nADMIN\nAGENT\nConvidar\nVoltar\nPular / Continuar"
+  },
+  {
+    "id": "logout",
+    "viewport": "mobile",
+    "url": "http://localhost:3000/login",
+    "text": "Autopilot\n\nEntre para operar leads e acompanhar o dashboard da sua empresa.\n\nEntrar\n\nUse as credenciais provisionadas no ambiente da API.\n\nE-mail\nSenha\nContinuar"
+  }
+]
