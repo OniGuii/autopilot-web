@@ -56,7 +56,7 @@ function SelectCompanyContent() {
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <Button asChild>
-                <a href="/setup">Primeiros passos</a>
+                <Link href="/setup">Primeiros passos</Link>
               </Button>
               <Button variant="outline" onClick={() => void logout()}>
                 Voltar ao login
