@@ -9,7 +9,7 @@ export const CONVERSATION_STATUSES: ConversationStatus[] = [
 
 export const CONVERSATION_STATUS_LABEL: Record<ConversationStatus, string> = {
   OPEN: "Aberta",
-  IDLE: "Idle",
+  IDLE: "Inativa",
   CLOSED: "Fechada",
   ARCHIVED: "Arquivada",
 };

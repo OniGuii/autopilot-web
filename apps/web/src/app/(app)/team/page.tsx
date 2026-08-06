@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api/client";
 import {
   createMembership,
   listMemberships,
@@ -17,6 +16,13 @@ import { RequireRole } from "@/components/auth/require-role";
 import { useAuth } from "@/providers/auth-provider";
 import { canInviteRole, canManageTeam } from "@/lib/auth/rbac";
 import type { MembershipRole } from "@/lib/api/types";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath, ROLE_LABEL } from "@/lib/nav";
+import { formatDateTime } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,13 +30,11 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -42,8 +46,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { formatDateTime } from "@/lib/format";
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -52,6 +54,12 @@ const inviteSchema = z.object({
 });
 
 type InviteForm = z.infer<typeof inviteSchema>;
+
+const MEMBERSHIP_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Ativo",
+  INVITED: "Convidado",
+  REVOKED: "Removido",
+};
 
 function TeamContent() {
   const { role, user } = useAuth();
@@ -76,130 +84,141 @@ function TeamContent() {
   const invite = useMutation({
     mutationFn: createMembership,
     onSuccess: (data) => {
-      toast.success(`Convite para ${data.email} (delivery: NONE)`);
+      toast.success(`Convite registrado para ${data.email}`);
       setOpen(false);
       form.reset({ email: "", name: "", role: "AGENT" });
       void qc.invalidateQueries({ queryKey: ["memberships"] });
     },
     onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao convidar"),
+      toast.error(friendlyError(e, "Não foi possível enviar o convite.")),
   });
 
   const patchRole = useMutation({
     mutationFn: ({ id, next }: { id: string; next: MembershipRole }) =>
       updateMembership(id, { role: next }),
     onSuccess: () => {
-      toast.success("Role atualizado");
+      toast.success("Papel atualizado");
       void qc.invalidateQueries({ queryKey: ["memberships"] });
     },
     onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao atualizar"),
+      toast.error(friendlyError(e, "Não foi possível atualizar o papel.")),
   });
 
   const revoke = useMutation({
     mutationFn: revokeMembership,
     onSuccess: (data) => {
-      toast.success(`Membro removido (${data.revokedSessions} sessões)`);
+      toast.success(
+        `Membro removido${data.revokedSessions ? ` · ${data.revokedSessions} sessão(ões) encerrada(s)` : ""}`,
+      );
       void qc.invalidateQueries({ queryKey: ["memberships"] });
     },
     onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao remover"),
+      toast.error(friendlyError(e, "Não foi possível remover o membro.")),
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-4xl tracking-tight">Team</h1>
-          <p className="text-muted-foreground">
-            Memberships da empresa (`/api/memberships`)
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ACTIVE">ACTIVE</SelectItem>
-              <SelectItem value="INVITED">INVITED</SelectItem>
-              <SelectItem value="ALL">Todos</SelectItem>
-            </SelectContent>
-          </Select>
-          {canManageTeam(role) ? (
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button>Convidar membro</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Convidar membro</DialogTitle>
-                </DialogHeader>
-                <form
-                  className="space-y-3"
-                  onSubmit={form.handleSubmit((v) => {
-                    if (!canInviteRole(role, v.role)) {
-                      toast.error("Você não pode convidar este role");
-                      return;
-                    }
-                    invite.mutate(v);
-                  })}
-                >
-                  <div className="space-y-2">
-                    <Label>E-mail</Label>
-                    <Input type="email" {...form.register("email")} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nome</Label>
-                    <Input {...form.register("name")} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select
-                      value={form.watch("role")}
-                      onValueChange={(v) =>
-                        form.setValue("role", v as InviteForm["role"])
+      <PageHeader
+        title="Equipe"
+        description="Convide pessoas e gerencie papéis na empresa."
+        breadcrumbs={breadcrumbsForPath("/team")}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Ativos</SelectItem>
+                <SelectItem value="INVITED">Convidados</SelectItem>
+                <SelectItem value="ALL">Todos</SelectItem>
+              </SelectContent>
+            </Select>
+            {canManageTeam(role) ? (
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogTrigger asChild>
+                  <Button>Convidar membro</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Convidar membro</DialogTitle>
+                    <DialogDescription>
+                      O convite fica pendente até a pessoa ativar a conta. Por
+                      enquanto o e-mail não é enviado automaticamente.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form
+                    className="space-y-3"
+                    onSubmit={form.handleSubmit((v) => {
+                      if (!canInviteRole(role, v.role)) {
+                        toast.error("Você não pode convidar para este papel.");
+                        return;
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {canInviteRole(role, "OWNER") ? (
-                          <SelectItem value="OWNER">OWNER</SelectItem>
-                        ) : null}
-                        <SelectItem value="ADMIN">ADMIN</SelectItem>
-                        <SelectItem value="AGENT">AGENT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Convite cria membership INVITED — e-mail não é enviado
-                    (`delivery: NONE`).
-                  </p>
-                  <Button type="submit" disabled={invite.isPending}>
-                    Enviar convite
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-          ) : null}
-        </div>
-      </div>
+                      invite.mutate(v);
+                    })}
+                  >
+                    <div className="space-y-2">
+                      <Label>E-mail</Label>
+                      <Input type="email" {...form.register("email")} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Nome</Label>
+                      <Input {...form.register("name")} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Papel</Label>
+                      <Select
+                        value={form.watch("role")}
+                        onValueChange={(v) =>
+                          form.setValue("role", v as InviteForm["role"])
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {canInviteRole(role, "OWNER") ? (
+                            <SelectItem value="OWNER">
+                              {ROLE_LABEL.OWNER}
+                            </SelectItem>
+                          ) : null}
+                          <SelectItem value="ADMIN">
+                            {ROLE_LABEL.ADMIN}
+                          </SelectItem>
+                          <SelectItem value="AGENT">
+                            {ROLE_LABEL.AGENT}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      O convite fica pendente até a pessoa ativar a conta. Por
+                      enquanto o e-mail não é enviado automaticamente.
+                    </p>
+                    <Button type="submit" disabled={invite.isPending}>
+                      {invite.isPending ? "Enviando…" : "Registrar convite"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            ) : null}
+          </div>
+        }
+      />
 
       {query.isLoading ? (
-        <Skeleton className="h-40 w-full" />
+        <LoadingBlock rows={3} label="Carregando equipe…" />
       ) : query.isError ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Falha ao listar memberships</CardTitle>
-            <CardDescription>
-              {query.error instanceof Error
-                ? query.error.message
-                : "Erro desconhecido"}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <ErrorPanel
+          title="Não foi possível carregar a equipe"
+          description={friendlyError(query.error)}
+          onRetry={() => void query.refetch()}
+        />
+      ) : (query.data?.data.length ?? 0) === 0 ? (
+        <EmptyState
+          title="Nenhum membro encontrado"
+          description="Ajuste o filtro ou convide alguém para a equipe."
+        />
       ) : (
         <div className="space-y-3">
           {(query.data?.data ?? []).map((m) => {
@@ -220,8 +239,12 @@ function TeamContent() {
                       {m.email}
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
-                      <Badge variant="secondary">{m.role}</Badge>
-                      <Badge variant="outline">{m.status}</Badge>
+                      <Badge variant="secondary">
+                        {ROLE_LABEL[m.role] ?? m.role}
+                      </Badge>
+                      <Badge variant="outline">
+                        {MEMBERSHIP_STATUS_LABEL[m.status] ?? m.status}
+                      </Badge>
                       <span className="text-xs text-muted-foreground">
                         desde {formatDateTime(m.joinedAt ?? m.createdAt)}
                       </span>
@@ -238,15 +261,21 @@ function TeamContent() {
                           })
                         }
                       >
-                        <SelectTrigger className="w-[130px]">
+                        <SelectTrigger className="w-[160px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {canInviteRole(role, "OWNER") ? (
-                            <SelectItem value="OWNER">OWNER</SelectItem>
+                            <SelectItem value="OWNER">
+                              {ROLE_LABEL.OWNER}
+                            </SelectItem>
                           ) : null}
-                          <SelectItem value="ADMIN">ADMIN</SelectItem>
-                          <SelectItem value="AGENT">AGENT</SelectItem>
+                          <SelectItem value="ADMIN">
+                            {ROLE_LABEL.ADMIN}
+                          </SelectItem>
+                          <SelectItem value="AGENT">
+                            {ROLE_LABEL.AGENT}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                       <Button
@@ -255,7 +284,7 @@ function TeamContent() {
                         onClick={() => {
                           if (
                             window.confirm(
-                              `Remover ${m.email} da empresa?`,
+                              `Remover ${m.email} da empresa? As sessões ativas serão encerradas.`,
                             )
                           ) {
                             revoke.mutate(m.id);
@@ -270,9 +299,6 @@ function TeamContent() {
               </Card>
             );
           })}
-          {(query.data?.data.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum membro.</p>
-          ) : null}
         </div>
       )}
     </div>

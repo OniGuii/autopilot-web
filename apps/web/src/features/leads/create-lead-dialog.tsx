@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createLead } from "@/features/leads/api";
 import { LEAD_STATUSES, LEAD_STATUS_LABEL } from "@/features/leads/constants";
-import { ApiError } from "@/lib/api/client";
+import { friendlyError } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,7 +75,7 @@ export function CreateLeadDialog() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error) => {
-      toast.error(error instanceof ApiError ? error.message : "Falha ao criar lead");
+      toast.error(friendlyError(error, "Não foi possível criar o lead."));
     },
   });
 
@@ -88,7 +88,7 @@ export function CreateLeadDialog() {
         <DialogHeader>
           <DialogTitle>Criar lead</DialogTitle>
           <DialogDescription>
-            Consome `POST /api/leads` no contexto da empresa ativa.
+            Cadastre um novo contato na empresa ativa.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -109,7 +109,11 @@ export function CreateLeadDialog() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="phone">Telefone</Label>
-            <Input id="phone" placeholder="+55 11 99999-0001" {...form.register("phone")} />
+            <Input
+              id="phone"
+              placeholder="+55 11 99999-0001"
+              {...form.register("phone")}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">E-mail</Label>

@@ -11,7 +11,12 @@ import {
 } from "@/features/follow-ups/constants";
 import { FollowUpStatusBadge } from "@/features/follow-ups/follow-up-status-badge";
 import type { FollowUpStatus } from "@/lib/api/types";
+import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -27,7 +32,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+
+const TYPE_LABEL: Record<string, string> = {
+  RECOVERY: "Recuperação",
+  NURTURE: "Nutrição",
+  REMINDER: "Lembrete",
+  CUSTOM: "Personalizado",
+};
 
 function FollowUpsContent() {
   const searchParams = useSearchParams();
@@ -53,13 +64,15 @@ function FollowUpsContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Follow-ups</h1>
-        <p className="text-muted-foreground">
-          Lista via `GET /api/follow-ups`
-          {leadId ? ` · lead ${leadId}` : ""}
-        </p>
-      </div>
+      <PageHeader
+        title="Follow-ups"
+        description={
+          leadId
+            ? "Follow-ups filtrados para o lead selecionado."
+            : "Sugestões e contatos agendados com seus leads."
+        }
+        breadcrumbs={breadcrumbsForPath("/follow-ups")}
+      />
 
       <Card className="bg-white/90">
         <CardHeader className="pb-3">
@@ -95,68 +108,99 @@ function FollowUpsContent() {
       <Card className="bg-white/90">
         <CardContent className="p-0">
           {query.isLoading ? (
-            <div className="space-y-3 p-6">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+            <div className="p-6">
+              <LoadingBlock rows={3} label="Carregando follow-ups…" />
             </div>
           ) : query.isError ? (
-            <div className="p-6 text-sm text-destructive">
-              Falha ao carregar follow-ups.
+            <div className="p-6">
+              <ErrorPanel
+                title="Não foi possível carregar os follow-ups"
+                onRetry={() => void query.refetch()}
+              />
             </div>
           ) : !query.data?.data.length ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Nenhum follow-up encontrado.
+            <div className="p-6">
+              <EmptyState
+                title="Nenhum follow-up por aqui"
+                description="Crie um follow-up a partir de uma conversa ou ajuste os filtros."
+              />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Lead</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Tipo</th>
-                    <th className="px-4 py-3 font-medium">Agendado</th>
-                    <th className="px-4 py-3 font-medium">Sugestão</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.data.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="border-b last:border-0 hover:bg-accent/40"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/follow-ups/${item.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {item.lead?.name || item.leadId}
-                        </Link>
-                        <p className="text-xs text-muted-foreground">
-                          {formatPhone(item.lead?.phone)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <FollowUpStatusBadge status={item.status} />
-                      </td>
-                      <td className="px-4 py-3">{item.type}</td>
-                      <td className="px-4 py-3">
-                        {formatDateTime(item.scheduledAt)}
-                      </td>
-                      <td className="max-w-xs truncate px-4 py-3">
-                        {item.suggestedBody || "—"}
-                      </td>
+            <>
+              <div className="space-y-3 p-4 md:hidden">
+                {query.data.data.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/follow-ups/${item.id}`}
+                    className="block rounded-xl border bg-background/80 p-4 transition-colors hover:bg-accent/50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium">
+                        {item.lead?.name || "Lead"}
+                      </p>
+                      <FollowUpStatusBadge status={item.status} />
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {formatPhone(item.lead?.phone)}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                      {item.suggestedBody || "—"}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Lead</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Tipo</th>
+                      <th className="px-4 py-3 font-medium">Agendado</th>
+                      <th className="px-4 py-3 font-medium">Sugestão</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {query.data.data.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-b last:border-0 hover:bg-accent/40"
+                      >
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/follow-ups/${item.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {item.lead?.name || "Lead"}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">
+                            {formatPhone(item.lead?.phone)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <FollowUpStatusBadge status={item.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          {TYPE_LABEL[item.type] ?? item.type}
+                        </td>
+                        <td className="px-4 py-3">
+                          {formatDateTime(item.scheduledAt)}
+                        </td>
+                        <td className="max-w-xs truncate px-4 py-3">
+                          {item.suggestedBody || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
-      {query.data ? (
-        <div className="flex items-center justify-between gap-3">
+      {query.data && query.data.data.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             Página {query.data.meta.page} de {query.data.meta.totalPages || 1} ·{" "}
             {query.data.meta.total} follow-ups
@@ -189,14 +233,7 @@ function FollowUpsContent() {
 
 export default function FollowUpsPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="space-y-4">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingBlock rows={4} label="Carregando follow-ups…" />}>
       <FollowUpsContent />
     </Suspense>
   );

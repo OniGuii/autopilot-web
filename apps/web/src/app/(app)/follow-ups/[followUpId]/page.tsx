@@ -16,8 +16,13 @@ import {
   retryFollowUp,
 } from "@/features/follow-ups/api";
 import { FollowUpStatusBadge } from "@/features/follow-ups/follow-up-status-badge";
-import { ApiError } from "@/lib/api/client";
+import { FOLLOW_UP_STATUS_LABEL } from "@/features/follow-ups/constants";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const rejectSchema = z.object({
   reason: z.string().min(1, "Motivo obrigatório").max(500),
@@ -41,6 +45,13 @@ const scheduleSchema = z.object({
 
 type RejectForm = z.infer<typeof rejectSchema>;
 type ScheduleForm = z.infer<typeof scheduleSchema>;
+
+const TYPE_LABEL: Record<string, string> = {
+  RECOVERY: "Recuperação",
+  NURTURE: "Nutrição",
+  REMINDER: "Lembrete",
+  CUSTOM: "Personalizado",
+};
 
 function toLocalInputValue(iso: string | null | undefined) {
   if (!iso) {
@@ -87,7 +98,7 @@ export default function FollowUpDetailPage() {
   };
 
   const onError = (error: unknown, fallback: string) => {
-    toast.error(error instanceof ApiError ? error.message : fallback);
+    toast.error(friendlyError(error, fallback));
   };
 
   const approveMutation = useMutation({
@@ -96,10 +107,10 @@ export default function FollowUpDetailPage() {
         scheduledAt: new Date(values.scheduledAt).toISOString(),
       }),
     onSuccess: async () => {
-      toast.success("Follow-up aprovado (SCHEDULED)");
+      toast.success("Follow-up aprovado e agendado");
       await invalidate();
     },
-    onError: (e) => onError(e, "Falha ao aprovar"),
+    onError: (e) => onError(e, "Não foi possível aprovar o follow-up."),
   });
 
   const rejectMutation = useMutation({
@@ -108,7 +119,7 @@ export default function FollowUpDetailPage() {
       toast.success("Follow-up rejeitado");
       await invalidate();
     },
-    onError: (e) => onError(e, "Falha ao rejeitar"),
+    onError: (e) => onError(e, "Não foi possível rejeitar o follow-up."),
   });
 
   const rescheduleMutation = useMutation({
@@ -120,48 +131,51 @@ export default function FollowUpDetailPage() {
       toast.success("Follow-up reagendado");
       await invalidate();
     },
-    onError: (e) => onError(e, "Falha ao reagendar"),
+    onError: (e) => onError(e, "Não foi possível reagendar o follow-up."),
   });
 
   const executeMutation = useMutation({
     mutationFn: () => executeFollowUp(followUpId),
     onSuccess: async (data) => {
-      toast.success(`Execução: ${data.status}`);
+      toast.success(
+        `Execução concluída: ${FOLLOW_UP_STATUS_LABEL[data.status] ?? data.status}`,
+      );
       await invalidate();
     },
-    onError: (e) => onError(e, "Falha ao executar"),
+    onError: (e) => onError(e, "Não foi possível executar o follow-up."),
   });
 
   const retryMutation = useMutation({
     mutationFn: () => retryFollowUp(followUpId),
     onSuccess: async (data) => {
-      toast.success(`Retry: ${data.status}`);
+      toast.success(
+        `Nova tentativa: ${FOLLOW_UP_STATUS_LABEL[data.status] ?? data.status}`,
+      );
       await invalidate();
     },
-    onError: (e) => onError(e, "Falha no retry"),
+    onError: (e) => onError(e, "Não foi possível tentar de novo."),
   });
 
   if (query.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <LoadingBlock rows={4} label="Carregando follow-up…" />;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Follow-up não encontrado</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link href="/follow-ups">Voltar</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <PageHeader
+          title="Follow-up"
+          breadcrumbs={breadcrumbsForPath(`/follow-ups/${followUpId}`)}
+        />
+        <ErrorPanel
+          title="Follow-up não encontrado"
+          description="Verifique o link ou o contexto da empresa e tente novamente."
+          onRetry={() => void query.refetch()}
+        />
+        <Button asChild variant="outline">
+          <Link href="/follow-ups">Voltar aos follow-ups</Link>
+        </Button>
+      </div>
     );
   }
 
@@ -175,27 +189,20 @@ export default function FollowUpDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link href="/follow-ups">← Follow-ups</Link>
-        </Button>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-4xl tracking-tight">
-            {item.lead?.name || "Follow-up"}
-          </h1>
-          <FollowUpStatusBadge status={item.status} />
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {formatPhone(item.lead?.phone)} · tipo {item.type} · tentativas{" "}
-          {item.attemptCount}
-        </p>
-      </div>
+      <PageHeader
+        title={item.lead?.name || "Follow-up"}
+        description={`${formatPhone(item.lead?.phone)} · ${TYPE_LABEL[item.type] ?? item.type} · ${item.attemptCount} tentativa(s)`}
+        breadcrumbs={breadcrumbsForPath(`/follow-ups/${item.id}`)}
+        actions={<FollowUpStatusBadge status={item.status} />}
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Detalhes</CardTitle>
-            <CardDescription>`GET /api/follow-ups/:id`</CardDescription>
+            <CardDescription>
+              Texto sugerido, agenda e resultado deste follow-up.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div>
@@ -222,19 +229,21 @@ export default function FollowUpDetailPage() {
             ) : null}
             <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline">
-                <Link href={`/leads/${item.leadId}`}>Lead</Link>
+                <Link href={`/leads/${item.leadId}`}>Ver lead</Link>
               </Button>
               {item.conversationId ? (
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/conversations/${item.conversationId}`}>
-                    Conversa
+                    Ver conversa
                   </Link>
                 </Button>
               ) : null}
             </div>
             {item.resultMessage ? (
               <div className="rounded-md border p-3">
-                <p className="text-xs text-muted-foreground">Mensagem resultado</p>
+                <p className="text-xs text-muted-foreground">
+                  Mensagem enviada
+                </p>
                 <p className="mt-1 whitespace-pre-wrap">
                   {item.resultMessage.body}
                 </p>
@@ -249,7 +258,7 @@ export default function FollowUpDetailPage() {
               <CardHeader>
                 <CardTitle className="text-lg">Aprovar</CardTitle>
                 <CardDescription>
-                  `POST /approve` → SCHEDULED
+                  Confirme a sugestão e escolha quando o contato deve acontecer.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -279,14 +288,23 @@ export default function FollowUpDetailPage() {
             <Card className="bg-white/90">
               <CardHeader>
                 <CardTitle className="text-lg">Rejeitar</CardTitle>
-                <CardDescription>`POST /reject` (motivo obrigatório)</CardDescription>
+                <CardDescription>
+                  Informe o motivo. Esta ação não pode ser desfeita.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form
                   className="space-y-3"
-                  onSubmit={rejectForm.handleSubmit((values) =>
-                    rejectMutation.mutate(values),
-                  )}
+                  onSubmit={rejectForm.handleSubmit((values) => {
+                    if (
+                      !window.confirm(
+                        "Rejeitar este follow-up? Esta ação não pode ser desfeita.",
+                      )
+                    ) {
+                      return;
+                    }
+                    rejectMutation.mutate(values);
+                  })}
                 >
                   <Textarea
                     placeholder="Motivo da rejeição"
@@ -308,7 +326,9 @@ export default function FollowUpDetailPage() {
             <Card className="bg-white/90">
               <CardHeader>
                 <CardTitle className="text-lg">Reagendar</CardTitle>
-                <CardDescription>`POST /reschedule`</CardDescription>
+                <CardDescription>
+                  Escolha uma nova data e horário para o contato.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form
@@ -343,12 +363,21 @@ export default function FollowUpDetailPage() {
               <CardHeader>
                 <CardTitle className="text-lg">Executar</CardTitle>
                 <CardDescription>
-                  `POST /execute` — requer WhatsApp CONNECTED
+                  Envia o follow-up agora. O WhatsApp precisa estar conectado.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button
-                  onClick={() => executeMutation.mutate()}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Executar este follow-up agora? A mensagem será enviada.",
+                      )
+                    ) {
+                      return;
+                    }
+                    executeMutation.mutate();
+                  }}
                   disabled={executeMutation.isPending}
                 >
                   {executeMutation.isPending ? "Executando…" : "Executar agora"}
@@ -360,8 +389,10 @@ export default function FollowUpDetailPage() {
           {canRetry ? (
             <Card className="bg-white/90">
               <CardHeader>
-                <CardTitle className="text-lg">Retry</CardTitle>
-                <CardDescription>`POST /retry` (FAILED)</CardDescription>
+                <CardTitle className="text-lg">Tentar de novo</CardTitle>
+                <CardDescription>
+                  Este follow-up falhou. Você pode tentar o envio novamente.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button
@@ -369,7 +400,7 @@ export default function FollowUpDetailPage() {
                   onClick={() => retryMutation.mutate()}
                   disabled={retryMutation.isPending}
                 >
-                  {retryMutation.isPending ? "Retentando…" : "Tentar novamente"}
+                  {retryMutation.isPending ? "Tentando…" : "Tentar de novo"}
                 </Button>
               </CardContent>
             </Card>

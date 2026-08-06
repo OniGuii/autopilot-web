@@ -8,12 +8,16 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Check, Circle } from "lucide-react";
-import { ApiError } from "@/lib/api/client";
 import { createSetupCompany, fetchSetupStatus } from "@/features/setup/api";
 import { createMembership } from "@/features/memberships/api";
 import { getWhatsAppStatus } from "@/features/whatsapp/api";
 import { useAuth } from "@/providers/auth-provider";
 import { canManageTeam } from "@/lib/auth/rbac";
+import type { MembershipRole, WhatsAppConnectionStatus } from "@/lib/api/types";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath, ROLE_LABEL } from "@/lib/nav";
+import { PageHeader } from "@/components/layout/page-header";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,13 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MembershipRole } from "@/lib/api/types";
 
 const companySchema = z.object({
   name: z.string().min(2, "Informe o nome"),
   slug: z
     .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug inválido (kebab-case)")
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Identificador inválido")
     .optional()
     .or(z.literal("")),
   timezone: z.string().min(1),
@@ -54,6 +57,21 @@ type CompanyForm = z.infer<typeof companySchema>;
 type InviteForm = z.infer<typeof inviteSchema>;
 
 type WizardStep = "empresa" | "equipe" | "whatsapp" | "conclusao";
+
+const SETUP_STEP_LABEL: Record<string, string> = {
+  company: "Empresa",
+  whatsapp: "WhatsApp",
+  firstLead: "Primeiro lead",
+  firstMessage: "Primeira mensagem",
+};
+
+const WA_STATUS_LABEL: Record<WhatsAppConnectionStatus, string> = {
+  QR_PENDING: "Aguardando QR Code",
+  CONNECTING: "Conectando",
+  CONNECTED: "Conectado",
+  DISCONNECTED: "Desconectado",
+  ERROR: "Com falha",
+};
 
 export default function SetupPage() {
   const { hasCompany, selectCompany, role } = useAuth();
@@ -107,9 +125,7 @@ export default function SetupPage() {
       setStep("equipe");
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao criar empresa",
-      );
+      toast.error(friendlyError(error, "Não foi possível criar a empresa."));
     },
   });
 
@@ -122,15 +138,11 @@ export default function SetupPage() {
       }),
     onSuccess: (data) => {
       setInvited(true);
-      toast.success(
-        `Convite registrado para ${data.email} (delivery: ${data.invite.delivery})`,
-      );
+      toast.success(`Convite registrado para ${data.email}`);
       inviteForm.reset({ email: "", name: "", role: "AGENT" });
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao convidar",
-      );
+      toast.error(friendlyError(error, "Não foi possível registrar o convite."));
     },
   });
 
@@ -159,12 +171,11 @@ export default function SetupPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Setup</h1>
-        <p className="text-muted-foreground">
-          Configure a empresa sem SQL ou seeds — só pela API.
-        </p>
-      </div>
+      <PageHeader
+        title="Primeiros passos"
+        description="Configure a empresa, convide a equipe e conecte o WhatsApp."
+        breadcrumbs={breadcrumbsForPath("/setup")}
+      />
 
       <ol className="grid gap-2 sm:grid-cols-4">
         {steps.map((s) => (
@@ -194,14 +205,14 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle>1. Empresa</CardTitle>
             <CardDescription>
-              `POST /api/setup/company` + select-company automático
+              Crie o espaço da sua empresa para começar a usar o Autopilot.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {hasCompany ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Empresa já vinculada. Avance para equipe.
+                  Empresa já vinculada. Avance para a equipe.
                 </p>
                 <Button type="button" onClick={() => setStep("equipe")}>
                   Continuar
@@ -219,7 +230,7 @@ export default function SetupPage() {
                   <Input id="name" {...companyForm.register("name")} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="slug">Slug (opcional)</Label>
+                  <Label htmlFor="slug">Identificador (opcional)</Label>
                   <Input
                     id="slug"
                     placeholder="minha-empresa"
@@ -227,11 +238,11 @@ export default function SetupPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="locale">Locale</Label>
+                  <Label htmlFor="locale">Idioma / locale</Label>
                   <Input id="locale" {...companyForm.register("locale")} />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="timezone">Timezone</Label>
+                  <Label htmlFor="timezone">Fuso horário</Label>
                   <Input id="timezone" {...companyForm.register("timezone")} />
                 </div>
                 <div className="sm:col-span-2">
@@ -250,7 +261,8 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle>2. Equipe</CardTitle>
             <CardDescription>
-              Convide pelo menos um colega (opcional) via `POST /api/memberships`
+              Convide um colega (opcional). O convite fica pendente até a pessoa
+              ativar a conta. Por enquanto o e-mail não é enviado automaticamente.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -268,7 +280,7 @@ export default function SetupPage() {
                   <Input {...inviteForm.register("name")} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Role</Label>
+                  <Label>Papel</Label>
                   <Select
                     value={inviteForm.watch("role")}
                     onValueChange={(v) =>
@@ -280,26 +292,30 @@ export default function SetupPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {role === "OWNER" ? (
-                        <SelectItem value="OWNER">OWNER</SelectItem>
+                        <SelectItem value="OWNER">{ROLE_LABEL.OWNER}</SelectItem>
                       ) : null}
-                      <SelectItem value="ADMIN">ADMIN</SelectItem>
-                      <SelectItem value="AGENT">AGENT</SelectItem>
+                      <SelectItem value="ADMIN">{ROLE_LABEL.ADMIN}</SelectItem>
+                      <SelectItem value="AGENT">{ROLE_LABEL.AGENT}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex items-end">
                   <Button type="submit" disabled={invite.isPending}>
-                    Convidar
+                    {invite.isPending ? "Convidando…" : "Convidar"}
                   </Button>
                 </div>
               </form>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Seu papel não convida membros — pule esta etapa.
+                Seu papel não permite convidar membros — pule esta etapa.
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep("empresa")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep("empresa")}
+              >
                 Voltar
               </Button>
               <Button type="button" onClick={() => setStep("whatsapp")}>
@@ -315,21 +331,29 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle>3. WhatsApp</CardTitle>
             <CardDescription>
-              Conecte a instância na tela dedicada e volte aqui.
+              Conecte o número da empresa na tela dedicada e volte aqui.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm">
               Status atual:{" "}
               <span className="font-medium">
-                {waQuery.data?.status ?? "carregando…"}
+                {waQuery.data
+                  ? WA_STATUS_LABEL[waQuery.data.status]
+                  : waQuery.isLoading
+                    ? "Carregando…"
+                    : "Ainda não verificado"}
               </span>
             </p>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
                 <Link href="/whatsapp">Abrir WhatsApp</Link>
               </Button>
-              <Button type="button" variant="outline" onClick={() => setStep("equipe")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep("equipe")}
+              >
                 Voltar
               </Button>
               <Button type="button" onClick={() => setStep("conclusao")}>
@@ -344,11 +368,13 @@ export default function SetupPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>4. Conclusão</CardTitle>
-            <CardDescription>`GET /api/setup/status`</CardDescription>
+            <CardDescription>
+              Veja o que já está pronto e o que ainda falta configurar.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {statusQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando status…</p>
+              <LoadingBlock rows={2} label="Carregando status…" />
             ) : (
               <ul className="space-y-2">
                 {(statusQuery.data?.steps ?? []).map((s) => (
@@ -356,9 +382,13 @@ export default function SetupPage() {
                     key={s.key}
                     className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
                   >
-                    <span>{s.key}</span>
-                    <span className={s.done ? "text-primary" : "text-muted-foreground"}>
-                      {s.done ? "ok" : s.detail ?? "pendente"}
+                    <span>{SETUP_STEP_LABEL[s.key] ?? s.key}</span>
+                    <span
+                      className={
+                        s.done ? "text-primary" : "text-muted-foreground"
+                      }
+                    >
+                      {s.done ? "Concluído" : s.detail ?? "Pendente"}
                     </span>
                   </li>
                 ))}
@@ -373,7 +403,7 @@ export default function SetupPage() {
                 Atualizar status
               </Button>
               <Button asChild>
-                <Link href="/dashboard">Ir ao dashboard</Link>
+                <Link href="/dashboard">Ir ao painel</Link>
               </Button>
             </div>
           </CardContent>

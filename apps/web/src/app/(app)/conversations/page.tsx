@@ -14,10 +14,16 @@ import {
   CONVERSATION_STATUS_LABEL,
 } from "@/features/conversations/constants";
 import type { ConversationStatus } from "@/lib/api/types";
-import { ApiError } from "@/lib/api/client";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -33,7 +39,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
 function ConversationsContent() {
   const router = useRouter();
@@ -71,34 +76,38 @@ function ConversationsContent() {
       router.push(`/conversations/${conversation.id}`);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao criar conversa",
-      );
+      toast.error(friendlyError(error, "Não foi possível criar a conversa."));
     },
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-4xl tracking-tight">Conversas</h1>
-          <p className="text-muted-foreground">
-            Inbox via `GET /api/conversations`
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Conversas"
+        description="Acompanhe o histórico de mensagens com seus leads."
+        breadcrumbs={breadcrumbsForPath("/conversations")}
+      />
 
       <Card className="bg-white/90">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Nova conversa</CardTitle>
-          <CardDescription>`POST /api/conversations` com leadId</CardDescription>
+          <CardDescription>
+            Abra um novo fio de mensagens a partir de um lead existente.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 md:flex-row">
-          <Input
-            placeholder="UUID do lead"
-            value={newLeadId}
-            onChange={(e) => setNewLeadId(e.target.value)}
-          />
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="leadId">Identificador do lead</Label>
+            <Input
+              id="leadId"
+              placeholder="Cole o código do lead"
+              value={newLeadId}
+              onChange={(e) => setNewLeadId(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Cole o código do lead (encontrado na página do lead)
+            </p>
+          </div>
           <Button
             disabled={!newLeadId.trim() || createMutation.isPending}
             onClick={() => createMutation.mutate()}
@@ -111,10 +120,11 @@ function ConversationsContent() {
       <Card className="bg-white/90">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Filtros</CardTitle>
+          <CardDescription>Busca por lead e status da conversa</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <Input
-            placeholder="Buscar lead (nome/telefone)"
+            placeholder="Buscar lead (nome ou telefone)"
             value={search}
             onChange={(e) => {
               setPage(1);
@@ -149,67 +159,102 @@ function ConversationsContent() {
       <Card className="bg-white/90">
         <CardContent className="p-0">
           {query.isLoading ? (
-            <div className="space-y-3 p-6">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+            <div className="p-6">
+              <LoadingBlock rows={3} label="Carregando conversas…" />
             </div>
           ) : query.isError ? (
-            <div className="p-6 text-sm text-destructive">
-              Falha ao carregar conversas.
+            <div className="p-6">
+              <ErrorPanel
+                title="Não foi possível carregar as conversas"
+                onRetry={() => void query.refetch()}
+              />
             </div>
           ) : !query.data?.data.length ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Nenhuma conversa encontrada.
+            <div className="p-6">
+              <EmptyState
+                title="Nenhuma conversa por aqui"
+                description="Abra uma conversa a partir de um lead ou ajuste os filtros."
+              />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Lead</th>
-                    <th className="px-4 py-3 font-medium">Telefone</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Canal</th>
-                    <th className="px-4 py-3 font-medium">Última msg</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.data.map((conversation) => (
-                    <tr
-                      key={conversation.id}
-                      className="border-b last:border-0 hover:bg-accent/40"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/conversations/${conversation.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {conversation.lead?.name || conversation.leadId}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        {formatPhone(conversation.lead?.phone)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="secondary">
-                          {CONVERSATION_STATUS_LABEL[conversation.status]}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">{conversation.channel}</td>
-                      <td className="px-4 py-3">
-                        {formatDateTime(conversation.lastMessageAt)}
-                      </td>
+            <>
+              <div className="space-y-3 p-4 md:hidden">
+                {query.data.data.map((conversation) => (
+                  <Link
+                    key={conversation.id}
+                    href={`/conversations/${conversation.id}`}
+                    className="block rounded-xl border bg-background/80 p-4 transition-colors hover:bg-accent/50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium">
+                        {conversation.lead?.name || "Lead"}
+                      </p>
+                      <Badge variant="secondary">
+                        {CONVERSATION_STATUS_LABEL[conversation.status]}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {formatPhone(conversation.lead?.phone)}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {formatDateTime(conversation.lastMessageAt)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Lead</th>
+                      <th className="px-4 py-3 font-medium">Telefone</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Canal</th>
+                      <th className="px-4 py-3 font-medium">Última msg</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {query.data.data.map((conversation) => (
+                      <tr
+                        key={conversation.id}
+                        className="border-b last:border-0 hover:bg-accent/40"
+                      >
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/conversations/${conversation.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {conversation.lead?.name || "Lead"}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3">
+                          {formatPhone(conversation.lead?.phone)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant="secondary">
+                            {CONVERSATION_STATUS_LABEL[conversation.status]}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {conversation.channel === "WHATSAPP"
+                            ? "WhatsApp"
+                            : conversation.channel}
+                        </td>
+                        <td className="px-4 py-3">
+                          {formatDateTime(conversation.lastMessageAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
-      {query.data ? (
-        <div className="flex items-center justify-between gap-3">
+      {query.data && query.data.data.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             Página {query.data.meta.page} de {query.data.meta.totalPages || 1} ·{" "}
             {query.data.meta.total} conversas
@@ -242,14 +287,7 @@ function ConversationsContent() {
 
 export default function ConversationsPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="space-y-4">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingBlock rows={4} label="Carregando conversas…" />}>
       <ConversationsContent />
     </Suspense>
   );
