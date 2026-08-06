@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api/client";
 import { downloadExport } from "@/features/exports/api";
 import { RequireRole } from "@/components/auth/require-role";
 import type { ExportKind } from "@/lib/api/types";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath } from "@/lib/nav";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,25 +23,21 @@ const EXPORTS: Array<{
   kind: ExportKind;
   title: string;
   description: string;
-  path: string;
 }> = [
   {
     kind: "leads",
     title: "Leads",
-    description: "CSV de leads da empresa",
-    path: "GET /api/exports/leads",
+    description: "Planilha CSV com os leads da empresa",
   },
   {
     kind: "activities",
-    title: "Activities",
-    description: "CSV de atividades de leads",
-    path: "GET /api/exports/activities",
+    title: "Atividades",
+    description: "Planilha CSV com atividades dos leads",
   },
   {
     kind: "followups",
     title: "Follow-ups",
-    description: "CSV de follow-ups",
-    path: "GET /api/exports/followups",
+    description: "Planilha CSV com follow-ups",
   },
 ];
 
@@ -55,11 +53,9 @@ function ExportsContent() {
         from: from ? new Date(from).toISOString() : undefined,
         to: to ? new Date(to).toISOString() : undefined,
       });
-      toast.success(`Download: ${filename}`);
+      toast.success(`Download iniciado: ${filename}`);
     } catch (error) {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha no export",
-      );
+      toast.error(friendlyError(error, "Não foi possível gerar a exportação."));
     } finally {
       setLoading(null);
     }
@@ -67,17 +63,18 @@ function ExportsContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Exports</h1>
-        <p className="text-muted-foreground">
-          Downloads CSV (OWNER/ADMIN) — limite 10.000 linhas na API
-        </p>
-      </div>
+      <PageHeader
+        title="Exportações"
+        description="Baixe planilhas CSV dos dados da empresa. Exportações grandes podem levar alguns instantes."
+        breadcrumbs={breadcrumbsForPath("/exports")}
+      />
 
       <Card className="bg-white/90">
         <CardHeader>
-          <CardTitle>Filtro opcional</CardTitle>
-          <CardDescription>Intervalo enviado como `from` / `to`</CardDescription>
+          <CardTitle>Período opcional</CardTitle>
+          <CardDescription>
+            Defina um intervalo para limitar o que será exportado.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -106,8 +103,7 @@ function ExportsContent() {
               <CardTitle>{item.title}</CardTitle>
               <CardDescription>{item.description}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">{item.path}</p>
+            <CardContent>
               <Button
                 className="w-full"
                 disabled={loading === item.kind}

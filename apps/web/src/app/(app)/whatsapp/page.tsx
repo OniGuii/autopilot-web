@@ -8,9 +8,16 @@ import {
   getWhatsAppStatus,
 } from "@/features/whatsapp/api";
 import { WhatsAppStatusBadge } from "@/features/whatsapp/status-badge";
+import type { WhatsAppConnectionStatus } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath, ROLE_LABEL } from "@/lib/nav";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/providers/auth-provider";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,7 +26,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+
+const STATUS_FRIENDLY: Record<WhatsAppConnectionStatus, string> = {
+  QR_PENDING: "Aguardando leitura do QR Code",
+  CONNECTING: "Conectando…",
+  CONNECTED: "Conectado e pronto para enviar",
+  DISCONNECTED: "Desconectado",
+  ERROR: "Há um problema na conexão",
+};
 
 export default function WhatsAppPage() {
   const { role } = useAuth();
@@ -37,13 +51,11 @@ export default function WhatsAppPage() {
   const connectMutation = useMutation({
     mutationFn: connectWhatsApp,
     onSuccess: async (data) => {
-      toast.success(`Status: ${data.status}`);
+      toast.success(STATUS_FRIENDLY[data.status] ?? "Conexão atualizada");
       await queryClient.invalidateQueries({ queryKey: ["whatsapp", "status"] });
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao conectar WhatsApp",
-      );
+      toast.error(friendlyError(error, "Não foi possível conectar o WhatsApp."));
     },
   });
 
@@ -55,9 +67,7 @@ export default function WhatsAppPage() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof ApiError
-          ? error.message
-          : "Falha ao desconectar WhatsApp",
+        friendlyError(error, "Não foi possível desconectar o WhatsApp."),
       );
     },
   });
@@ -69,60 +79,58 @@ export default function WhatsAppPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">WhatsApp</h1>
-        <p className="text-muted-foreground">
-          Conexão e status da instância Evolution (`/api/whatsapp/*`)
-        </p>
-      </div>
+      <PageHeader
+        title="WhatsApp"
+        description="Conecte o número da empresa para enviar e receber mensagens."
+        breadcrumbs={breadcrumbsForPath("/whatsapp")}
+      />
 
       <Card className="bg-white/90">
         <CardHeader>
           <CardTitle>Status da conexão</CardTitle>
           <CardDescription>
-            `GET /api/whatsapp/status` · Connect/Disconnect: OWNER|ADMIN
+            {canManage
+              ? "Conecte, escaneie o QR Code e acompanhe o status."
+              : `Somente ${ROLE_LABEL.OWNER} ou ${ROLE_LABEL.ADMIN} podem alterar a conexão.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {query.isLoading ? (
-            <Skeleton className="h-24 w-full" />
+            <LoadingBlock rows={2} label="Carregando status do WhatsApp…" />
           ) : notFound ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Nenhuma instância encontrada. Conecte para criar.
-              </p>
-              {canManage ? (
-                <Button
-                  onClick={() => connectMutation.mutate()}
-                  disabled={connectMutation.isPending}
-                >
-                  {connectMutation.isPending ? "Conectando…" : "Conectar"}
-                </Button>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Apenas OWNER/ADMIN podem conectar.
-                </p>
-              )}
-            </div>
+            <EmptyState
+              title="WhatsApp ainda não conectado"
+              description="Conecte um número para começar a enviar mensagens."
+              action={
+                canManage ? (
+                  <Button
+                    onClick={() => connectMutation.mutate()}
+                    disabled={connectMutation.isPending}
+                  >
+                    {connectMutation.isPending ? "Conectando…" : "Conectar"}
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : query.isError ? (
-            <div className="space-y-3">
-              <p className="text-sm text-destructive">
-                {query.error instanceof ApiError
-                  ? query.error.message
-                  : "Falha ao carregar status"}
-              </p>
-              <Button variant="outline" onClick={() => void query.refetch()}>
-                Tentar novamente
-              </Button>
-            </div>
+            <ErrorPanel
+              title="Não foi possível carregar o status"
+              description={friendlyError(query.error)}
+              onRetry={() => void query.refetch()}
+            />
           ) : query.data ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
                 <WhatsAppStatusBadge status={query.data.status} />
                 <span className="text-sm text-muted-foreground">
-                  {query.data.instanceName}
+                  {STATUS_FRIENDLY[query.data.status]}
                 </span>
               </div>
+              {query.data.instanceName ? (
+                <p className="text-sm text-muted-foreground">
+                  Conta: {query.data.instanceName}
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">Telefone</p>
@@ -136,12 +144,6 @@ export default function WhatsAppPage() {
                     {formatDateTime(query.data.connectedAt)}
                   </p>
                 </div>
-                <div className="rounded-md border p-3 sm:col-span-2">
-                  <p className="text-xs text-muted-foreground">Instance key</p>
-                  <p className="break-all font-mono text-xs">
-                    {query.data.instanceKey}
-                  </p>
-                </div>
               </div>
               {query.data.lastError ? (
                 <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -151,7 +153,7 @@ export default function WhatsAppPage() {
               {query.data.status === "QR_PENDING" && query.data.qrCode ? (
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <p className="mb-3 text-sm font-medium">
-                    Escaneie o QR Code no WhatsApp
+                    Escaneie o QR Code no WhatsApp do celular
                   </p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -182,7 +184,16 @@ export default function WhatsAppPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => disconnectMutation.mutate()}
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Desconectar o WhatsApp? Mensagens deixarão de ser enviadas até reconectar.",
+                        )
+                      ) {
+                        return;
+                      }
+                      disconnectMutation.mutate();
+                    }}
                     disabled={
                       disconnectMutation.isPending ||
                       query.data.status === "DISCONNECTED"

@@ -11,8 +11,12 @@ import { toast } from "sonner";
 import { getLead, updateLead } from "@/features/leads/api";
 import { LeadStatusBadge } from "@/features/leads/lead-status-badge";
 import { LEAD_STATUSES, LEAD_STATUS_LABEL } from "@/features/leads/constants";
-import { ApiError } from "@/lib/api/client";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -101,34 +104,30 @@ export default function LeadDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao atualizar lead",
-      );
+      toast.error(friendlyError(error, "Não foi possível atualizar o lead."));
     },
   });
 
   if (query.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <LoadingBlock rows={4} label="Carregando lead…" />;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Lead não encontrado</CardTitle>
-          <CardDescription>Verifique o id ou o contexto da empresa.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link href="/leads">Voltar</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <PageHeader
+          title="Detalhe do lead"
+          breadcrumbs={breadcrumbsForPath(`/leads/${leadId}`)}
+        />
+        <ErrorPanel
+          title="Lead não encontrado"
+          description="Verifique o link ou o contexto da empresa e tente novamente."
+          onRetry={() => void query.refetch()}
+        />
+        <Button asChild variant="outline">
+          <Link href="/leads">Voltar aos leads</Link>
+        </Button>
+      </div>
     );
   }
 
@@ -136,33 +135,58 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <Button asChild variant="ghost" size="sm" className="-ml-2">
-            <Link href="/leads">← Voltar</Link>
-          </Button>
-          <h1 className="font-display text-4xl tracking-tight">{lead.name}</h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <PageHeader
+        title={lead.name}
+        description={`${formatPhone(lead.phone)} · Atualizado ${formatDateTime(lead.updatedAt)}`}
+        breadcrumbs={breadcrumbsForPath(`/leads/${lead.id}`)}
+        actions={
+          <div className="flex flex-wrap gap-2">
             <LeadStatusBadge status={lead.status} />
-            <span>{formatPhone(lead.phone)}</span>
-            <span>·</span>
-            <span>Atualizado {formatDateTime(lead.updatedAt)}</span>
+            <Button asChild variant="outline">
+              <Link href={`/conversations?leadId=${lead.id}`}>Conversas</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/follow-ups?leadId=${lead.id}`}>Follow-ups</Link>
+            </Button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/conversations?leadId=${lead.id}`}>Conversas</Link>
+        }
+      />
+
+      <Card className="bg-white/90">
+        <CardHeader>
+          <CardTitle className="text-lg">Identificador do lead</CardTitle>
+          <CardDescription>
+            Use este código ao abrir uma conversa para este contato.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <code className="rounded-md border bg-muted/40 px-3 py-2 text-xs break-all">
+            {lead.id}
+          </code>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(lead.id);
+                toast.success("Identificador copiado");
+              } catch {
+                toast.error("Não foi possível copiar. Selecione o código manualmente.");
+              }
+            }}
+          >
+            Copiar
           </Button>
-          <Button asChild variant="outline">
-            <Link href={`/follow-ups?leadId=${lead.id}`}>Follow-ups</Link>
-          </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <Card className="bg-white/90">
         <CardHeader>
           <CardTitle>Editar lead</CardTitle>
-          <CardDescription>`PATCH /api/leads/:id`</CardDescription>
+          <CardDescription>
+            Atualize os dados e o status deste contato.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -206,8 +230,14 @@ export default function LeadDetailPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="score">Score</Label>
-              <Input id="score" type="number" min={0} max={100} {...form.register("score")} />
+              <Label htmlFor="score">Pontuação</Label>
+              <Input
+                id="score"
+                type="number"
+                min={0}
+                max={100}
+                {...form.register("score")}
+              />
             </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={mutation.isPending}>

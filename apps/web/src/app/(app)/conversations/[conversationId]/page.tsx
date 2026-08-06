@@ -16,9 +16,14 @@ import { CONVERSATION_STATUS_LABEL } from "@/features/conversations/constants";
 import { createFollowUp } from "@/features/follow-ups/api";
 import { getWhatsAppStatus, sendWhatsAppMessage } from "@/features/whatsapp/api";
 import { WhatsAppStatusBadge } from "@/features/whatsapp/status-badge";
-import { ApiError } from "@/lib/api/client";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const messageSchema = z.object({
   body: z.string().min(1, "Mensagem obrigatória").max(4096),
@@ -43,6 +47,11 @@ const followUpSchema = z.object({
 });
 
 type FollowUpForm = z.infer<typeof followUpSchema>;
+
+const DIRECTION_LABEL: Record<string, string> = {
+  OUTBOUND: "Enviada",
+  INBOUND: "Recebida",
+};
 
 export default function ConversationDetailPage() {
   const params = useParams<{ conversationId: string }>();
@@ -102,9 +111,7 @@ export default function ConversationDetailPage() {
       await invalidate();
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao enviar mensagem",
-      );
+      toast.error(friendlyError(error, "Não foi possível enviar a mensagem."));
     },
   });
 
@@ -115,9 +122,7 @@ export default function ConversationDetailPage() {
       await invalidate();
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao fechar conversa",
-      );
+      toast.error(friendlyError(error, "Não foi possível fechar a conversa."));
     },
   });
 
@@ -133,40 +138,36 @@ export default function ConversationDetailPage() {
       });
     },
     onSuccess: async (followUp) => {
-      toast.success("Follow-up criado (SUGGESTED)");
+      toast.success("Follow-up criado como sugestão");
       followUpForm.reset();
       await invalidate();
       router.push(`/follow-ups/${followUp.id}`);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof ApiError ? error.message : "Falha ao criar follow-up",
-      );
+      toast.error(friendlyError(error, "Não foi possível criar o follow-up."));
     },
   });
 
   if (query.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-80 w-full" />
-      </div>
-    );
+    return <LoadingBlock rows={4} label="Carregando conversa…" />;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Conversa não encontrada</CardTitle>
-          <CardDescription>Verifique o id ou o contexto da empresa.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link href="/conversations">Voltar</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <PageHeader
+          title="Conversa"
+          breadcrumbs={breadcrumbsForPath(`/conversations/${conversationId}`)}
+        />
+        <ErrorPanel
+          title="Conversa não encontrada"
+          description="Verifique o link ou o contexto da empresa e tente novamente."
+          onRetry={() => void query.refetch()}
+        />
+        <Button asChild variant="outline">
+          <Link href="/conversations">Voltar às conversas</Link>
+        </Button>
+      </div>
     );
   }
 
@@ -176,66 +177,63 @@ export default function ConversationDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <Button asChild variant="ghost" size="sm" className="-ml-2">
-            <Link href="/conversations">← Inbox</Link>
-          </Button>
-          <h1 className="font-display text-4xl tracking-tight">
-            {conversation.lead?.name || "Conversa"}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <PageHeader
+        title={conversation.lead?.name || "Conversa"}
+        description={`${formatPhone(conversation.lead?.phone)} · ${CONVERSATION_STATUS_LABEL[conversation.status]}`}
+        breadcrumbs={breadcrumbsForPath(`/conversations/${conversation.id}`)}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">
               {CONVERSATION_STATUS_LABEL[conversation.status]}
             </Badge>
-            <span>{formatPhone(conversation.lead?.phone)}</span>
-            <span>·</span>
-            <Link
-              href={`/leads/${conversation.leadId}`}
-              className="text-primary hover:underline"
-            >
-              Ver lead
-            </Link>
             {waQuery.data ? (
-              <>
-                <span>·</span>
-                <WhatsAppStatusBadge status={waQuery.data.status} />
-              </>
+              <WhatsAppStatusBadge status={waQuery.data.status} />
+            ) : null}
+            <Button asChild variant="outline">
+              <Link href={`/leads/${conversation.leadId}`}>Ver lead</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/follow-ups?leadId=${conversation.leadId}`}>
+                Follow-ups
+              </Link>
+            </Button>
+            {conversation.status !== "CLOSED" ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Fechar esta conversa? Você poderá consultá-la depois, mas não enviará novas mensagens por aqui.",
+                    )
+                  ) {
+                    closeMutation.mutate();
+                  }
+                }}
+                disabled={closeMutation.isPending}
+              >
+                {closeMutation.isPending ? "Fechando…" : "Fechar conversa"}
+              </Button>
             ) : null}
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/follow-ups?leadId=${conversation.leadId}`}>
-              Follow-ups
-            </Link>
-          </Button>
-          {conversation.status !== "CLOSED" ? (
-            <Button
-              variant="outline"
-              onClick={() => closeMutation.mutate()}
-              disabled={closeMutation.isPending}
-            >
-              Fechar
-            </Button>
-          ) : null}
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
         <Card className="bg-white/90">
           <CardHeader>
-            <CardTitle>Timeline de mensagens</CardTitle>
+            <CardTitle>Mensagens</CardTitle>
             <CardDescription>
-              Últimas 50 mensagens (`GET /api/conversations/:id`)
+              Histórico recente desta conversa
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="max-h-[480px] space-y-3 overflow-y-auto rounded-lg border bg-muted/20 p-4">
               {messages.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nenhuma mensagem ainda.
-                </p>
+                <EmptyState
+                  title="Nenhuma mensagem ainda"
+                  description="Envie a primeira mensagem abaixo."
+                  className="border-0 bg-transparent py-8"
+                />
               ) : (
                 messages.map((message) => {
                   const outbound = message.direction === "OUTBOUND";
@@ -264,7 +262,9 @@ export default function ConversationDetailPage() {
                               : "text-muted-foreground",
                           )}
                         >
-                          {message.direction} · {formatDateTime(message.createdAt)}
+                          {DIRECTION_LABEL[message.direction] ??
+                            message.direction}{" "}
+                          · {formatDateTime(message.createdAt)}
                         </p>
                       </div>
                     </div>
@@ -292,7 +292,7 @@ export default function ConversationDetailPage() {
                   }
                   onClick={() => messageForm.setValue("mode", "crm")}
                 >
-                  CRM (`/messages`)
+                  Registrar no CRM
                 </Button>
                 <Button
                   type="button"
@@ -305,11 +305,11 @@ export default function ConversationDetailPage() {
                   onClick={() => messageForm.setValue("mode", "whatsapp")}
                   disabled={!waConnected}
                 >
-                  WhatsApp (`/whatsapp/send`)
+                  Enviar pelo WhatsApp
                 </Button>
                 {!waConnected ? (
                   <span className="text-xs text-muted-foreground">
-                    WhatsApp precisa estar CONNECTED —{" "}
+                    WhatsApp precisa estar conectado —{" "}
                     <Link href="/whatsapp" className="text-primary underline">
                       conectar
                     </Link>
@@ -331,7 +331,8 @@ export default function ConversationDetailPage() {
           <CardHeader>
             <CardTitle>Criar follow-up</CardTitle>
             <CardDescription>
-              `POST /api/follow-ups` (status inicial SUGGESTED)
+              Sugira um próximo contato para esta conversa. Ele começa como
+              sugestão e pode ser aprovado depois.
             </CardDescription>
           </CardHeader>
           <CardContent>

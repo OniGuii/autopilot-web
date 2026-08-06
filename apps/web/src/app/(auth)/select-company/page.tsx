@@ -1,19 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api/client";
 import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { useAuth } from "@/providers/auth-provider";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath, ROLE_LABEL } from "@/lib/nav";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -28,37 +29,41 @@ function SelectCompanyContent() {
       toast.success("Empresa selecionada");
       navigateAfterAuth("/dashboard");
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Falha ao selecionar empresa";
-      toast.error(message);
+      toast.error(
+        friendlyError(error, "Não foi possível selecionar a empresa."),
+      );
       setLoadingSlug(null);
     }
   }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-4 py-10">
-      <div className="mb-8 space-y-2">
-        <p className="font-display text-4xl tracking-tight">Autopilot</p>
-        <h1 className="text-2xl font-semibold">Selecione a empresa</h1>
-        <p className="text-muted-foreground">
-          Olá, {user?.name}. Escolha o contexto (slug) para continuar.
-        </p>
-      </div>
+      <PageHeader
+        title="Escolher empresa"
+        description={`Olá, ${user?.name ?? "bem-vindo"}. Selecione a empresa para continuar.`}
+        breadcrumbs={breadcrumbsForPath("/select-company")}
+        actions={
+          <Button variant="outline" onClick={() => void logout()}>
+            Sair
+          </Button>
+        }
+      />
 
       {memberships.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Nenhuma empresa disponível</CardTitle>
-            <CardDescription>
-              Não há memberships ACTIVE para este usuário. Verifique o seed da API.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" onClick={() => void logout()}>
-              Voltar ao login
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="Nenhuma empresa disponível"
+          description="Sua conta ainda não está vinculada a uma empresa. Crie uma nos primeiros passos ou peça um convite."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild>
+                <a href="/setup">Primeiros passos</a>
+              </Button>
+              <Button variant="outline" onClick={() => void logout()}>
+                Voltar ao login
+              </Button>
+            </div>
+          }
+        />
       ) : (
         <div className="grid gap-3">
           {memberships.map((m) => (
@@ -70,9 +75,11 @@ function SelectCompanyContent() {
                   </div>
                   <div>
                     <p className="font-medium">{m.companyName}</p>
-                    <p className="text-sm text-muted-foreground">{m.companySlug}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {m.companySlug}
+                    </p>
                     <Badge variant="secondary" className="mt-2">
-                      {m.role}
+                      {ROLE_LABEL[m.role] ?? m.role}
                     </Badge>
                   </div>
                 </div>

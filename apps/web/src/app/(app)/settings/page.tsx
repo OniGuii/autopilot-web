@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api/client";
 import {
   fetchCompanySettings,
   updateCompanySettings,
@@ -18,6 +17,11 @@ import {
   canEditSettings,
 } from "@/lib/auth/rbac";
 import type { CompanyCurrency } from "@/lib/api/types";
+import { friendlyError } from "@/lib/errors";
+import { breadcrumbsForPath, ROLE_LABEL } from "@/lib/nav";
+import { PageHeader } from "@/components/layout/page-header";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const DAYS = [
   "monday",
@@ -49,11 +52,21 @@ const DAYS = [
 
 type DayKey = (typeof DAYS)[number];
 
+const DAY_LABEL: Record<DayKey, string> = {
+  monday: "Segunda",
+  tuesday: "Terça",
+  wednesday: "Quarta",
+  thursday: "Quinta",
+  friday: "Sexta",
+  saturday: "Sábado",
+  sunday: "Domingo",
+};
+
 const schema = z.object({
   name: z.string().min(1).max(200),
   slug: z
     .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug inválido")
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Identificador inválido")
     .optional()
     .or(z.literal("")),
   timezone: z.string().min(1).max(64),
@@ -173,28 +186,44 @@ function SettingsContent() {
       void qc.invalidateQueries({ queryKey: ["company-settings"] });
     },
     onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao salvar"),
+      toast.error(friendlyError(e, "Não foi possível salvar as configurações.")),
   });
 
   if (query.isLoading) {
-    return <Skeleton className="h-64 w-full" />;
+    return <LoadingBlock rows={4} label="Carregando configurações…" />;
+  }
+
+  if (query.isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Configurações"
+          breadcrumbs={breadcrumbsForPath("/settings")}
+        />
+        <ErrorPanel
+          title="Não foi possível carregar as configurações"
+          description={friendlyError(query.error)}
+          onRetry={() => void query.refetch()}
+        />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
-          Configurações da empresa (`/api/settings/company`)
-        </p>
-      </div>
+      <PageHeader
+        title="Configurações"
+        description="Identidade, fuso horário e horário de atendimento da empresa."
+        breadcrumbs={breadcrumbsForPath("/settings")}
+      />
 
       {!editable ? (
-        <Card>
+        <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Somente leitura</CardTitle>
             <CardDescription>
-              AGENT pode visualizar; alterações exigem OWNER ou ADMIN.
+              {ROLE_LABEL.AGENT} pode visualizar. Alterações exigem{" "}
+              {ROLE_LABEL.OWNER} ou {ROLE_LABEL.ADMIN}.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -207,7 +236,7 @@ function SettingsContent() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Identidade</CardTitle>
-            <CardDescription>Nome, logo e locale</CardDescription>
+            <CardDescription>Nome, logo e preferências regionais</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
@@ -215,18 +244,20 @@ function SettingsContent() {
               <Input disabled={!editable} {...form.register("name")} />
             </div>
             <div className="space-y-2">
-              <Label>Slug {critical ? "" : "(somente OWNER)"}</Label>
+              <Label>
+                Identificador {critical ? "" : `(somente ${ROLE_LABEL.OWNER})`}
+              </Label>
               <Input
                 disabled={!editable || !critical}
                 {...form.register("slug")}
               />
             </div>
             <div className="space-y-2">
-              <Label>Locale</Label>
+              <Label>Idioma / locale</Label>
               <Input disabled={!editable} {...form.register("locale")} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Logo URL (HTTPS)</Label>
+              <Label>URL do logo (HTTPS)</Label>
               <Input
                 disabled={!editable}
                 placeholder="https://..."
@@ -236,17 +267,17 @@ function SettingsContent() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={form.watch("logoUrl")}
-                  alt="Logo preview"
+                  alt="Pré-visualização do logo"
                   className="mt-2 h-12 object-contain"
                 />
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label>Timezone</Label>
+              <Label>Fuso horário</Label>
               <Input disabled={!editable} {...form.register("timezone")} />
             </div>
             <div className="space-y-2">
-              <Label>Currency</Label>
+              <Label>Moeda</Label>
               <Select
                 disabled={!editable}
                 value={form.watch("currency")}
@@ -258,9 +289,9 @@ function SettingsContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BRL">BRL</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="BRL">Real (BRL)</SelectItem>
+                  <SelectItem value="USD">Dólar (USD)</SelectItem>
+                  <SelectItem value="EUR">Euro (EUR)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -269,9 +300,9 @@ function SettingsContent() {
 
         <Card className="bg-white/90">
           <CardHeader>
-            <CardTitle>Business hours</CardTitle>
+            <CardTitle>Horário de atendimento</CardTitle>
             <CardDescription>
-              Horário semanal (JSON livre na API — UI padroniza open/close)
+              Defina abertura e fechamento por dia da semana
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -280,7 +311,7 @@ function SettingsContent() {
                 key={day}
                 className="grid grid-cols-[7rem_1fr_1fr] items-center gap-2"
               >
-                <span className="text-sm capitalize">{day}</span>
+                <span className="text-sm">{DAY_LABEL[day]}</span>
                 <Input
                   type="time"
                   disabled={!editable}

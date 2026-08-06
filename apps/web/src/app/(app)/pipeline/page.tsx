@@ -4,6 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchPipeline } from "@/features/pipeline/api";
 import { LEAD_STATUS_LABEL } from "@/features/leads/constants";
 import type { LeadStatus } from "@/lib/api/types";
+import { breadcrumbsForPath } from "@/lib/nav";
+import { formatDateTime } from "@/lib/format";
+import { PageHeader } from "@/components/layout/page-header";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import {
   Card,
   CardContent,
@@ -11,9 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { formatDateTime } from "@/lib/format";
 
 function formatMs(ms: number | null | undefined) {
   if (ms == null) return "—";
@@ -29,29 +31,21 @@ export default function PipelinePage() {
   });
 
   if (query.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-3 md:grid-cols-3">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </div>
-      </div>
-    );
+    return <LoadingBlock rows={4} label="Carregando funil…" />;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Falha ao carregar pipeline</CardTitle>
-          <CardDescription>GET /api/pipeline</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => void query.refetch()}>Tentar novamente</Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <PageHeader
+          title="Funil"
+          breadcrumbs={breadcrumbsForPath("/pipeline")}
+        />
+        <ErrorPanel
+          title="Não foi possível carregar o funil"
+          onRetry={() => void query.refetch()}
+        />
+      </div>
     );
   }
 
@@ -63,12 +57,11 @@ export default function PipelinePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Pipeline</h1>
-        <p className="text-muted-foreground">
-          Funil por status · {formatDateTime(data.generatedAt)}
-        </p>
-      </div>
+      <PageHeader
+        title="Funil"
+        description={`Leads por estágio · atualizado em ${formatDateTime(data.generatedAt)}`}
+        breadcrumbs={breadcrumbsForPath("/pipeline")}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="bg-white/90">
@@ -107,7 +100,7 @@ export default function PipelinePage() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Conversão p/ convertido:{" "}
+                  Conversão para convertido:{" "}
                   {conv == null ? "—" : `${(conv * 100).toFixed(1)}%`}
                 </p>
                 <p className="text-xs text-muted-foreground">
