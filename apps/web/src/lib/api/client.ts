@@ -115,3 +115,53 @@ export async function apiRequest<T>(
 
   return parsed as T;
 }
+
+/** Download binary/text responses (CSV exports) with auth + refresh. */
+export async function apiDownload(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const { body, auth = true, skipRefresh = false, headers, ...rest } = options;
+  const requestHeaders = new Headers(headers);
+
+  if (body !== undefined) {
+    requestHeaders.set("Content-Type", "application/json");
+  }
+
+  if (auth) {
+    const token = getAccessToken();
+    if (token) {
+      requestHeaders.set("Authorization", `Bearer ${token}`);
+    }
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...rest,
+    headers: requestHeaders,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (response.status === 401 && auth && !skipRefresh) {
+    const refreshed = await ensureRefreshed();
+    if (refreshed) {
+      return apiDownload(path, { ...options, skipRefresh: true });
+    }
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let parsed: ApiErrorBody | null = null;
+    try {
+      parsed = text ? (JSON.parse(text) as ApiErrorBody) : null;
+    } catch {
+      parsed = { message: text || response.statusText };
+    }
+    throw new ApiError(response.status, parsed ?? { message: response.statusText });
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^"]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? "export.csv";
+  const blob = await response.blob();
+  return { blob, filename };
+}
