@@ -5,6 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchDashboard } from "@/features/dashboard/api";
 import { LEAD_STATUS_LABEL } from "@/features/leads/constants";
 import type { LeadStatus } from "@/lib/api/types";
+import { breadcrumbsForPath } from "@/lib/nav";
+import { PageHeader } from "@/components/layout/page-header";
+import { ErrorPanel } from "@/components/feedback/error-panel";
+import { LoadingBlock } from "@/components/feedback/loading-block";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/format";
 
 function Kpi({ label, value }: { label: string; value: string | number }) {
@@ -34,31 +37,16 @@ export default function DashboardPage() {
   });
 
   if (query.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </div>
-      </div>
-    );
+    return <LoadingBlock rows={4} label="Carregando painel…" />;
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Falha ao carregar dashboard</CardTitle>
-          <CardDescription>
-            Não foi possível obter `GET /api/dashboard`.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => void query.refetch()}>Tentar novamente</Button>
-        </CardContent>
-      </Card>
+      <ErrorPanel
+        title="Não foi possível carregar o painel"
+        description="Verifique sua conexão e tente novamente."
+        onRetry={() => void query.refetch()}
+      />
     );
   }
 
@@ -67,19 +55,18 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-4xl tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Atualizado em {formatDateTime(generatedAt)}
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/leads">Abrir leads</Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Painel"
+        description={`Atualizado em ${formatDateTime(generatedAt)}`}
+        breadcrumbs={breadcrumbsForPath("/dashboard")}
+        actions={
+          <Button asChild>
+            <Link href="/leads">Ver leads</Link>
+          </Button>
+        }
+      />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <Kpi label="Total de leads" value={overview.totalLeads} />
         <Kpi label="Conversas abertas" value={conversations.openConversations} />
         <Kpi label="Follow-ups pendentes" value={followUps.pending} />
@@ -97,7 +84,7 @@ export default function DashboardPage() {
             {statuses.map(([status, count]) => (
               <div
                 key={status}
-                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
               >
                 <span>{LEAD_STATUS_LABEL[status]}</span>
                 <span className="font-medium">{count}</span>
@@ -109,22 +96,22 @@ export default function DashboardPage() {
         <Card className="bg-white/90">
           <CardHeader>
             <CardTitle>Resumo operacional</CardTitle>
-            <CardDescription>KPIs do período atual da API</CardDescription>
+            <CardDescription>Indicadores do período atual</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md border p-3">
+            <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Novos</p>
               <p className="text-2xl font-semibold">{overview.newLeads}</p>
             </div>
-            <div className="rounded-md border p-3">
+            <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Convertidos</p>
               <p className="text-2xl font-semibold">{overview.convertedLeads}</p>
             </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground">Msgs enviadas</p>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Mensagens enviadas</p>
               <p className="text-2xl font-semibold">{conversations.messagesSent}</p>
             </div>
-            <div className="rounded-md border p-3">
+            <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Follow-ups atrasados</p>
               <p className="text-2xl font-semibold">{followUps.overdue}</p>
             </div>

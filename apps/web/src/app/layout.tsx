@@ -16,8 +16,13 @@ const body = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Autopilot CRM",
-  description: "Frontend SaaS Autopilot — Sprint 1",
+  title: {
+    default: "Autopilot",
+    template: "%s · Autopilot",
+  },
+  description:
+    "Autopilot — CRM para operar leads, conversas e follow-ups no WhatsApp.",
+  applicationName: "Autopilot",
 };
 
 export default function RootLayout({
@@ -31,7 +36,7 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             {children}
-            <Toaster richColors position="top-right" />
+            <Toaster richColors position="top-right" closeButton />
           </AuthProvider>
         </QueryProvider>
       </body>

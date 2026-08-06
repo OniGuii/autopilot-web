@@ -4,26 +4,29 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f7f8f6;
-  --foreground: #14201b;
+  /* Autopilot brand — forest teal on warm stone (not purple / cream-terracotta) */
+  --background: #f3f6f4;
+  --foreground: #12241d;
   --card: #ffffff;
-  --card-foreground: #14201b;
+  --card-foreground: #12241d;
   --popover: #ffffff;
-  --popover-foreground: #14201b;
-  --primary: #1f6b4f;
-  --primary-foreground: #f4fbf7;
-  --secondary: #e7eee9;
-  --secondary-foreground: #1d332a;
-  --muted: #e8eeea;
-  --muted-foreground: #5b6b63;
-  --accent: #dfece5;
-  --accent-foreground: #163328;
+  --popover-foreground: #12241d;
+  --primary: #0f5c4c;
+  --primary-foreground: #f2faf7;
+  --secondary: #e4ebe6;
+  --secondary-foreground: #1a3329;
+  --muted: #e7eeea;
+  --muted-foreground: #5a6d64;
+  --accent: #d5e8df;
+  --accent-foreground: #0f3d32;
   --destructive: #b42318;
   --destructive-foreground: #fff7f6;
-  --border: #d5ddd8;
-  --input: #d5ddd8;
-  --ring: #2f8a67;
-  --radius: 0.65rem;
+  --border: #cfd8d3;
+  --input: #cfd8d3;
+  --ring: #1a7a63;
+  --radius: 0.75rem;
+  --brand-glow: rgba(15, 92, 76, 0.14);
+  --surface-glass: rgba(255, 255, 255, 0.72);
 }
 
 @theme inline {
@@ -60,12 +63,20 @@
 body {
   @apply bg-background text-foreground antialiased;
   font-family: var(--font-body), "Segoe UI", sans-serif;
+  background-color: var(--background);
   background-image:
-    radial-gradient(circle at 12% 8%, rgba(47, 138, 103, 0.12), transparent 34%),
-    linear-gradient(180deg, #f8faf8 0%, #eef2ef 100%);
+    radial-gradient(ellipse 80% 50% at 0% -10%, var(--brand-glow), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(26, 122, 99, 0.08), transparent 45%),
+    linear-gradient(180deg, #f7faf8 0%, #eef3f0 55%, #e8eeea 100%);
+  background-attachment: fixed;
   min-height: 100vh;
 }
 
 .font-display {
   font-family: var(--font-display), Georgia, serif;
+}
+
+.surface-panel {
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
 }

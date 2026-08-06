@@ -5,9 +5,10 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api/client";
 import { navigateAfterAuth } from "@/lib/auth/navigate";
+import { friendlyError } from "@/lib/errors";
 import { useAuth } from "@/providers/auth-provider";
+import { BrandLogo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,6 @@ export default function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  // If session already exists (e.g. bounce after toast), enter the app.
   useEffect(() => {
     if (bootstrapping || submitting) return;
     if (user && hasCompany) {
@@ -53,10 +53,10 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const nextMemberships = await login(values.email, values.password);
-      toast.success("Login realizado");
+      toast.success("Bem-vindo de volta");
 
       if (nextMemberships.length === 0) {
-        toast.message("Crie sua empresa para começar");
+        toast.message("Vamos criar sua empresa para começar");
         navigateAfterAuth("/setup");
         return;
       }
@@ -70,9 +70,7 @@ export default function LoginPage() {
 
       navigateAfterAuth("/select-company");
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Falha ao autenticar";
-      toast.error(message);
+      toast.error(friendlyError(error, "Não foi possível entrar. Verifique e-mail e senha."));
       setSubmitting(false);
     }
   }
@@ -80,12 +78,14 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="grid w-full max-w-5xl gap-8 md:grid-cols-[1.1fr_0.9fr] md:items-center">
-        <div className="space-y-4">
-          <p className="font-display text-5xl leading-none tracking-tight text-foreground md:text-6xl">
-            Autopilot
+        <div className="space-y-5">
+          <BrandLogo className="scale-110 origin-left" />
+          <p className="font-display text-4xl leading-tight tracking-tight text-foreground md:text-5xl">
+            Seu CRM para leads e WhatsApp
           </p>
           <p className="max-w-md text-lg text-muted-foreground">
-            Entre para operar leads e acompanhar o dashboard da sua empresa.
+            Acompanhe conversas, follow-ups e o desempenho da equipe em um só
+            lugar.
           </p>
         </div>
 
@@ -94,8 +94,8 @@ export default function LoginPage() {
             <CardTitle className="font-display text-3xl">Entrar</CardTitle>
             <CardDescription>
               {bootstrapping
-                ? "Verificando sessão existente…"
-                : "Use as credenciais provisionadas no ambiente da API."}
+                ? "Verificando sua sessão…"
+                : "Acesse com o e-mail e a senha da sua conta."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -106,7 +106,7 @@ export default function LoginPage() {
                   id="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="owner@pilot.autopilot.dev"
+                  placeholder="voce@empresa.com"
                   disabled={bootstrapping || submitting}
                   {...form.register("email")}
                 />
@@ -137,7 +137,7 @@ export default function LoginPage() {
                 disabled={bootstrapping || submitting}
               >
                 {bootstrapping
-                  ? "Carregando sessão…"
+                  ? "Carregando…"
                   : submitting
                     ? "Entrando…"
                     : "Continuar"}

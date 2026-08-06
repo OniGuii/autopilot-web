@@ -34,7 +34,7 @@ export function CompanyGate({ children }: { children: React.ReactNode }) {
 
   if (!hasCompany && allowWithout) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e8f1ec,_transparent_40%),linear-gradient(180deg,#f7f8f6_0%,#eef1ef_100%)]">
+      <div className="min-h-screen">
         <main className="mx-auto max-w-3xl px-4 py-10">{children}</main>
       </div>
     );
