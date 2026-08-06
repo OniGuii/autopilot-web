@@ -77,14 +77,6 @@ export default function LoginPage() {
     }
   }
 
-  if (bootstrapping) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Carregando sessão…
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="grid w-full max-w-5xl gap-8 md:grid-cols-[1.1fr_0.9fr] md:items-center">
@@ -101,7 +93,9 @@ export default function LoginPage() {
           <CardHeader>
             <CardTitle className="font-display text-3xl">Entrar</CardTitle>
             <CardDescription>
-              Use as credenciais provisionadas no ambiente da API.
+              {bootstrapping
+                ? "Verificando sessão existente…"
+                : "Use as credenciais provisionadas no ambiente da API."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -113,6 +107,7 @@ export default function LoginPage() {
                   type="email"
                   autoComplete="email"
                   placeholder="owner@pilot.autopilot.dev"
+                  disabled={bootstrapping || submitting}
                   {...form.register("email")}
                 />
                 {form.formState.errors.email ? (
@@ -127,6 +122,7 @@ export default function LoginPage() {
                   id="password"
                   type="password"
                   autoComplete="current-password"
+                  disabled={bootstrapping || submitting}
                   {...form.register("password")}
                 />
                 {form.formState.errors.password ? (
@@ -135,8 +131,16 @@ export default function LoginPage() {
                   </p>
                 ) : null}
               </div>
-              <Button className="w-full" type="submit" disabled={submitting}>
-                {submitting ? "Entrando…" : "Continuar"}
+              <Button
+                className="w-full"
+                type="submit"
+                disabled={bootstrapping || submitting}
+              >
+                {bootstrapping
+                  ? "Carregando sessão…"
+                  : submitting
+                    ? "Entrando…"
+                    : "Continuar"}
               </Button>
             </form>
           </CardContent>
