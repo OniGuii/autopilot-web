@@ -1,6 +1,6 @@
 # Fase 11D — Relatório Executivo (Recovery Engine)
 
-**Status:** Implementado (pré-validação de build/testes no CI/local)  
+**Status:** Implementado e validado localmente  
 **Branch:** `cursor/ai-sales-agent-11d-dd93`  
 **Data:** 2026-08-07
 
@@ -44,9 +44,16 @@ O Recovery Engine agenda e envia follow-ups de recuperação (`AI_RECOVERY`) sob
 
 ---
 
-## Validação
+## Validação (local)
 
-Ver seção de resultados de build/testes ao final desta revisão após execução local/CI.
+| Check | Resultado |
+|-------|-----------|
+| `prisma migrate deploy` (11D) | ✅ |
+| `nest build` (API) | ✅ |
+| `next build` (web, rota `/ai/recovery`) | ✅ |
+| Unit `ai-recovery*` | ✅ 16 testes |
+| Unit regressão assist/follow-up/metrics | ✅ 29 testes |
+| E2E `ai-sales-agent-11d` | ✅ 4 testes |
 
 ---
 

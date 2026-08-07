@@ -115,11 +115,11 @@ describe('AI Sales Agent 11D Recovery (e2e)', () => {
     );
   });
 
-  it('rejects non-increasing cadenceHours', async () => {
+  it('rejects non-strictly-increasing cadenceHours', async () => {
     await request(app.getHttpServer())
       .patch('/api/ai/recovery/settings')
       .set('Authorization', `Bearer ${token}`)
-      .send({ cadenceHours: [72, 24, 168] })
+      .send({ cadenceHours: [24, 24, 72] })
       .expect(400);
   });
 });

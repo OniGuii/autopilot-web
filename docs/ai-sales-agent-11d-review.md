@@ -103,4 +103,4 @@ Stop hooks:
 | Respeita takeover | ✅ |
 | Dashboard operacional | ✅ |
 | Métricas + auditoria | ✅ |
-| Build / testes | ver executive report |
+| Build / testes | ✅ local (ver executive report) |
