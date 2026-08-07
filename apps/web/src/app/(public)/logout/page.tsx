@@ -12,8 +12,8 @@ export default function LogoutPage() {
   }, [logout]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4">
-      <BrandLogo />
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 overflow-x-hidden px-4">
+      <BrandLogo className="max-w-full" />
       <p className="text-sm text-muted-foreground">Encerrando sua sessão…</p>
     </div>
   );
