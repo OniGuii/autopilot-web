@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { navigateAfterAuth } from "@/lib/auth/navigate";
 import { friendlyError } from "@/lib/errors";
 import { useAuth } from "@/providers/auth-provider";
-import { BrandLogo } from "@/components/brand/logo";
+import { BrandMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,10 +79,12 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="grid w-full max-w-5xl gap-8 md:grid-cols-[1.1fr_0.9fr] md:items-center">
         <div className="space-y-5">
-          <BrandLogo className="scale-110 origin-left" />
-          <p className="font-display text-4xl leading-tight tracking-tight text-foreground md:text-5xl">
-            Seu CRM para leads e WhatsApp
-          </p>
+          <div className="flex items-center gap-3">
+            <BrandMark className="h-10 w-10" />
+            <p className="font-display text-5xl leading-none tracking-tight text-foreground md:text-6xl">
+              Autopilot
+            </p>
+          </div>
           <p className="max-w-md text-lg text-muted-foreground">
             Acompanhe conversas, follow-ups e o desempenho da equipe em um só
             lugar.
