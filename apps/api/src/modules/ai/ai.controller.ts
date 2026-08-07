@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -18,6 +19,7 @@ import { CompanyContextGuard } from '../auth/guards/company-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { AiDashboardService } from './ai-dashboard.service';
 import { AiIntentService } from './ai-intent.service';
 import { AiService } from './ai.service';
 import { ClassifyIntentDto } from './dto/classify-intent.dto';
@@ -31,7 +33,18 @@ export class AiController {
   constructor(
     private readonly aiService: AiService,
     private readonly intentService: AiIntentService,
+    private readonly dashboard: AiDashboardService,
   ) {}
+
+  @Get('dashboard')
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Fase 11C — métricas do agente (auto-replies, escaladas, taxa de automação).',
+  })
+  getDashboard(@CurrentUser() user: AuthenticatedUser) {
+    return this.dashboard.getOverview(this.asCompanyActor(user));
+  }
 
   @Post('conversations/:conversationId/suggest')
   @HttpCode(HttpStatus.OK)

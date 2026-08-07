@@ -33,6 +33,12 @@ const INTENT_KINDS: Partial<Record<AiIntent, KnowledgeBaseKind[]>> = {
     KnowledgeBaseKind.ADDRESS,
     KnowledgeBaseKind.FAQ,
   ],
+  [AiIntent.HOURS]: [KnowledgeBaseKind.HOURS, KnowledgeBaseKind.FAQ],
+  [AiIntent.ADDRESS]: [
+    KnowledgeBaseKind.ADDRESS,
+    KnowledgeBaseKind.DELIVERY,
+    KnowledgeBaseKind.FAQ,
+  ],
   [AiIntent.COMPLAINT]: [KnowledgeBaseKind.FAQ],
   [AiIntent.UNKNOWN]: [KnowledgeBaseKind.FAQ],
   [AiIntent.HUMAN]: [],

@@ -491,6 +491,18 @@ export class WhatsappSendService {
         : null) ?? newCorrelationId();
 
     const source = input.metadata?.source?.trim() || 'whatsapp_send';
+    const isAiAgent = source === 'ai_agent';
+    const extraMeta =
+      input.metadata && typeof input.metadata === 'object'
+        ? Object.fromEntries(
+            Object.entries(input.metadata).filter(
+              ([k]) =>
+                !['source', 'correlationId', 'followUpId', 'attempt'].includes(
+                  k,
+                ),
+            ),
+          )
+        : {};
     const messageMetadata: Prisma.InputJsonObject = {
       source,
       correlationId,
@@ -502,9 +514,11 @@ export class WhatsappSendService {
       ...(input.metadata?.attempt !== undefined
         ? { attempt: input.metadata.attempt }
         : {}),
+      ...extraMeta,
     };
 
     // P3-O1 — create PENDING before Evolution call (P4-D4: each send = new Message)
+    // 11C AUTO: senderType=AI_AGENT, no human senderUserId.
     const pending = await this.prisma.message.create({
       data: {
         companyId,
@@ -513,8 +527,8 @@ export class WhatsappSendService {
         status: OUTBOUND_MESSAGE_STATUS.PENDING,
         body,
         contentType: 'TEXT',
-        senderType: 'USER',
-        senderUserId: actor.sub,
+        senderType: isAiAgent ? 'AI_AGENT' : 'USER',
+        senderUserId: isAiAgent ? null : actor.sub,
         externalMessageId: null,
         metadata: messageMetadata,
       },
@@ -585,7 +599,7 @@ export class WhatsappSendService {
         });
         await this.audit.write(tx, {
           companyId,
-          actorUserId: actor.sub,
+          actorUserId: source === 'ai_agent' ? null : actor.sub,
           action: 'WHATSAPP_MESSAGE_FAILED',
           targetType: 'MESSAGE',
           targetId: pending.id,
@@ -597,6 +611,7 @@ export class WhatsappSendService {
             status: OUTBOUND_MESSAGE_STATUS.FAILED,
             errorMessage,
             correlationId,
+            source,
           },
           ip: meta?.ip,
           userAgent: meta?.userAgent,
@@ -636,7 +651,7 @@ export class WhatsappSendService {
 
       await this.audit.write(tx, {
         companyId,
-        actorUserId: actor.sub,
+        actorUserId: source === 'ai_agent' ? null : actor.sub,
         action: 'WHATSAPP_MESSAGE_SENT',
         targetType: 'MESSAGE',
         targetId: pending.id,

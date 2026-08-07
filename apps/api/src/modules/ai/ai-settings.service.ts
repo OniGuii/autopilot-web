@@ -71,8 +71,8 @@ export class AiSettingsService {
       id: row.id,
       companyId: row.companyId,
       mode: row.mode,
-      /** AUTO is accepted in storage but must not drive sends until 11C. */
-      autoEnabled: false,
+      /** 11C — AUTO opt-in drives supervised auto-send. */
+      autoEnabled: row.mode === AiAgentMode.AUTO,
       maxAutoRepliesPerLeadDay: row.maxAutoRepliesPerLeadDay,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

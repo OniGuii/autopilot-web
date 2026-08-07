@@ -70,4 +70,15 @@ describe('AiSettingsService (11A)', () => {
       expect.objectContaining({ action: 'AI_SETTINGS_UPDATE' }),
     );
   });
+
+  it('AUTO opt-in enables autoEnabled (11C)', async () => {
+    prisma.companyAiSettings.findFirst.mockResolvedValue(row);
+    prisma.companyAiSettings.update.mockResolvedValue({
+      ...row,
+      mode: AiAgentMode.AUTO,
+    });
+    const updated = await service.update(actor, { mode: AiAgentMode.AUTO });
+    expect(updated.mode).toBe(AiAgentMode.AUTO);
+    expect(updated.autoEnabled).toBe(true);
+  });
 });

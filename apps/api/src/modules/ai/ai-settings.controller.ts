@@ -29,7 +29,7 @@ export class AiSettingsController {
   @Roles(MembershipRole.OWNER, MembershipRole.ADMIN)
   @ApiOperation({
     summary:
-      'Update AI agent settings (OWNER|ADMIN). AUTO may be stored but is not used until 11C.',
+      'Update AI agent settings (OWNER|ADMIN). AUTO is opt-in supervised send (11C).',
   })
   update(
     @CurrentUser() user: AuthenticatedUser,

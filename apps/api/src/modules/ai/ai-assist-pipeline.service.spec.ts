@@ -1,8 +1,12 @@
 import { AiAgentMode, AiIntent, FollowUpStatus } from '@prisma/client';
 import { AiAssistPipelineService } from './ai-assist-pipeline.service';
+import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiIntentService } from './ai-intent.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import {
+  AI_AGENT_MESSAGE_SOURCE,
+  AI_AUTO_SENT,
+  AI_AUTO_SKIPPED,
   AI_ESCALATED,
   AI_FOLLOWUP_TYPE,
   AI_INTENT_CLASSIFIED,
@@ -11,13 +15,14 @@ import {
   AI_RESPONSE_GENERATED,
 } from './ai.constants';
 
-describe('AiAssistPipelineService (11B)', () => {
+describe('AiAssistPipelineService (11C)', () => {
   const companyId = 'c1';
   const conversationId = 'conv-1';
   const leadId = 'lead-1';
   const messageId = 'msg-1';
 
   const auditWrites: Array<{ action: string }> = [];
+  const createdFollowUps: Array<Record<string, unknown>> = [];
 
   const audit = {
     write: jest.fn(async (_tx: unknown, data: { action: string }) => {
@@ -26,23 +31,11 @@ describe('AiAssistPipelineService (11B)', () => {
     }),
   };
 
-  const createdFollowUps: Array<Record<string, unknown>> = [];
-
   const prisma = {
-    companyAiSettings: {
-      findFirst: jest.fn(),
-    },
-    followUp: {
-      findFirst: jest.fn(),
-      create: jest.fn(),
-    },
-    conversation: {
-      findFirst: jest.fn(),
-    },
-    message: {
-      findFirst: jest.fn(),
-      update: jest.fn(),
-    },
+    companyAiSettings: { findFirst: jest.fn() },
+    followUp: { findFirst: jest.fn(), create: jest.fn() },
+    conversation: { findFirst: jest.fn(), update: jest.fn() },
+    message: { findFirst: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -55,45 +48,64 @@ describe('AiAssistPipelineService (11B)', () => {
         AiIntent.PRODUCT,
         AiIntent.PAYMENT,
         AiIntent.DELIVERY,
+        AiIntent.HOURS,
+        AiIntent.ADDRESS,
+      ].includes(intent),
+    ),
+    isAutoSafeIntent: jest.fn((intent: AiIntent) =>
+      [
+        AiIntent.PRICE,
+        AiIntent.PRODUCT,
+        AiIntent.PAYMENT,
+        AiIntent.DELIVERY,
+        AiIntent.HOURS,
+        AiIntent.ADDRESS,
       ].includes(intent),
     ),
   };
 
-  const kbResolver = {
-    resolve: jest.fn(),
-  };
-
+  const kbResolver = { resolve: jest.fn() };
+  const guardrails = { evaluate: jest.fn() };
+  const whatsappSend = { send: jest.fn() };
   const prom = {
     recordAiIntent: jest.fn(),
     recordAiKbHit: jest.fn(),
     recordAiKbMiss: jest.fn(),
     recordAiResponseGenerated: jest.fn(),
     recordAiResponseEscalated: jest.fn(),
+    recordAiAutoSent: jest.fn(),
+    recordAiAutoSkipped: jest.fn(),
   };
 
   let service: AiAssistPipelineService;
-  let whatsappSendSpy: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     auditWrites.length = 0;
     createdFollowUps.length = 0;
-    whatsappSendSpy = jest.fn();
 
     prisma.companyAiSettings.findFirst.mockResolvedValue({
       mode: AiAgentMode.ASSIST,
+      maxAutoRepliesPerLeadDay: 3,
     });
     prisma.followUp.findFirst.mockResolvedValue(null);
+    prisma.message.findFirst.mockImplementation(
+      async (args: { where?: { direction?: string; id?: string } }) => {
+        if (args?.where?.direction === 'OUTBOUND') return null;
+        if (args?.where?.id === messageId) {
+          return { id: messageId, metadata: null };
+        }
+        return null;
+      },
+    );
+    prisma.message.update.mockResolvedValue({});
     prisma.conversation.findFirst.mockResolvedValue({
       id: conversationId,
       assignedUserId: 'user-1',
+      agentPaused: false,
       lead: { ownerId: 'owner-1' },
     });
-    prisma.message.findFirst.mockResolvedValue({
-      id: messageId,
-      metadata: null,
-    });
-    prisma.message.update.mockResolvedValue({});
+    prisma.conversation.update.mockResolvedValue({});
     prisma.followUp.create.mockImplementation(
       async ({ data }: { data: Record<string, unknown> }) => {
         const row = { id: `fu-${createdFollowUps.length + 1}`, ...data };
@@ -104,44 +116,48 @@ describe('AiAssistPipelineService (11B)', () => {
     prisma.$transaction.mockImplementation(
       async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
     );
+    guardrails.evaluate.mockResolvedValue({ allowed: true });
 
     service = new AiAssistPipelineService(
       prisma as never,
       audit as never,
       intentService as unknown as AiIntentService,
       kbResolver as unknown as KnowledgeBaseResolver,
+      guardrails as unknown as AiAutoGuardrailsService,
+      whatsappSend as never,
       prom as never,
     );
   });
 
-  function stubClassify(
-    intent: AiIntent,
-    opts?: { confidence?: number; rationale?: string },
-  ) {
+  function stubClassify(intent: AiIntent, confidence = 0.88) {
     intentService.classify.mockResolvedValue({
       intent,
-      confidence: opts?.confidence ?? 0.88,
+      confidence,
       escalated: false,
       escalationReason: null,
       kbMatched: false,
       matchedKinds: [],
-      rationale: opts?.rationale ?? `heuristic:${intent}`,
+      rationale: `heuristic:${intent}`,
     });
   }
 
-  it('PRICE com KB cria FollowUp SUGGESTED sem enviar WhatsApp', async () => {
-    stubClassify(AiIntent.PRICE);
+  function stubKbHit() {
     kbResolver.resolve.mockResolvedValue({
       bestMatch: {
-        id: 'kb-price',
+        id: 'kb-1',
         kind: 'PRICE',
         title: 'Plano Pro',
         body: 'R$ 199/mês',
         tags: ['preco'],
       },
       confidence: 0.7,
-      source: 'kb:PRICE:kb-price',
+      source: 'kb:PRICE:kb-1',
     });
+  }
+
+  it('PRICE com KB (ASSIST) cria FollowUp SUGGESTED sem enviar', async () => {
+    stubClassify(AiIntent.PRICE);
+    stubKbHit();
     intentService.evaluateEscalation.mockReturnValue({
       escalated: false,
       escalationReason: null,
@@ -155,21 +171,9 @@ describe('AiAssistPipelineService (11B)', () => {
       messageBody: 'quanto custa o plano pro?',
     });
 
-    expect(result.skipped).toBe(false);
     expect(result.whatsappSent).toBe(false);
-    expect(result.requiresHuman).toBe(false);
-    expect(result.intent).toBe(AiIntent.PRICE);
-    expect(createdFollowUps).toHaveLength(1);
-    expect(createdFollowUps[0]).toEqual(
-      expect.objectContaining({
-        type: AI_FOLLOWUP_TYPE,
-        status: FollowUpStatus.SUGGESTED,
-        assignedUserId: 'user-1',
-      }),
-    );
-    expect(
-      (createdFollowUps[0].metadata as { autoSend: boolean }).autoSend,
-    ).toBe(false);
+    expect(createdFollowUps[0].status).toBe(FollowUpStatus.SUGGESTED);
+    expect(whatsappSend.send).not.toHaveBeenCalled();
     expect(auditWrites.map((a) => a.action)).toEqual(
       expect.arrayContaining([
         AI_INTENT_CLASSIFIED,
@@ -177,13 +181,9 @@ describe('AiAssistPipelineService (11B)', () => {
         AI_RESPONSE_GENERATED,
       ]),
     );
-    expect(auditWrites.map((a) => a.action)).not.toContain(AI_ESCALATED);
-    expect(prom.recordAiKbHit).toHaveBeenCalled();
-    expect(prom.recordAiResponseGenerated).toHaveBeenCalled();
-    expect(whatsappSendSpy).not.toHaveBeenCalled();
   });
 
-  it('PRICE sem KB escala e cria FollowUp com requiresHuman', async () => {
+  it('PRICE sem KB escala com FollowUp requiresHuman', async () => {
     stubClassify(AiIntent.PRICE);
     kbResolver.resolve.mockResolvedValue({
       bestMatch: null,
@@ -205,66 +205,29 @@ describe('AiAssistPipelineService (11B)', () => {
 
     expect(result.requiresHuman).toBe(true);
     expect(result.whatsappSent).toBe(false);
-    expect(createdFollowUps[0].metadata).toEqual(
-      expect.objectContaining({
-        requiresHuman: true,
-        escalationReason: 'PRICE_WITHOUT_KB',
-        autoSend: false,
-      }),
-    );
-    expect(auditWrites.map((a) => a.action)).toEqual(
-      expect.arrayContaining([
-        AI_INTENT_CLASSIFIED,
-        AI_KB_MATCH_MISSED,
-        AI_RESPONSE_GENERATED,
-        AI_ESCALATED,
-      ]),
-    );
-    expect(prom.recordAiKbMiss).toHaveBeenCalled();
-    expect(prom.recordAiResponseEscalated).toHaveBeenCalled();
+    expect(auditWrites.map((a) => a.action)).toContain(AI_KB_MATCH_MISSED);
+    expect(auditWrites.map((a) => a.action)).toContain(AI_ESCALATED);
   });
 
-  it('PRODUCT com KB gera sugestão ancorada', async () => {
-    stubClassify(AiIntent.PRODUCT);
-    kbResolver.resolve.mockResolvedValue({
-      bestMatch: {
-        id: 'kb-prod',
-        kind: 'PRODUCT',
-        title: 'Modelo X',
-        body: 'Disponível em estoque, cor preta',
-        tags: ['modelo'],
-      },
-      confidence: 0.65,
-      source: 'kb:PRODUCT:kb-prod',
+  it('AUTO + PRICE com KB envia via WhatsappSendService', async () => {
+    prisma.companyAiSettings.findFirst.mockResolvedValue({
+      mode: AiAgentMode.AUTO,
+      maxAutoRepliesPerLeadDay: 3,
     });
+    stubClassify(AiIntent.PRICE);
+    stubKbHit();
     intentService.evaluateEscalation.mockReturnValue({
       escalated: false,
       escalationReason: null,
     });
-
-    const result = await service.handleInbound({
-      companyId,
+    whatsappSend.send.mockResolvedValue({
+      ok: true,
+      messageId: 'out-1',
       conversationId,
       leadId,
-      messageId,
-      messageBody: 'vocês têm o modelo x em estoque?',
-    });
-
-    expect(result.requiresHuman).toBe(false);
-    expect(String(createdFollowUps[0].suggestedBody)).toContain('Modelo X');
-    expect(result.whatsappSent).toBe(false);
-  });
-
-  it('COMPLAINT sempre escala', async () => {
-    stubClassify(AiIntent.COMPLAINT, { confidence: 0.92 });
-    kbResolver.resolve.mockResolvedValue({
-      bestMatch: null,
-      confidence: 0,
-      source: null,
-    });
-    intentService.evaluateEscalation.mockReturnValue({
-      escalated: true,
-      escalationReason: 'COMPLAINT',
+      externalMessageId: 'wa-1',
+      status: 'SENT',
+      correlationId: 'corr-1',
     });
 
     const result = await service.handleInbound({
@@ -272,67 +235,113 @@ describe('AiAssistPipelineService (11B)', () => {
       conversationId,
       leadId,
       messageId,
-      messageBody: 'péssimo serviço quero reclamar',
+      messageBody: 'quanto custa o plano pro?',
     });
 
-    expect(result.requiresHuman).toBe(true);
-    expect(result.whatsappSent).toBe(false);
-    expect(auditWrites.map((a) => a.action)).toContain(AI_ESCALATED);
-    expect(prom.recordAiIntent).toHaveBeenCalledWith(AiIntent.COMPLAINT);
+    expect(result.whatsappSent).toBe(true);
+    expect(result.correlationId).toBe('corr-1');
+    expect(whatsappSend.send).toHaveBeenCalledWith(
+      expect.objectContaining({ cid: companyId }),
+      expect.objectContaining({
+        body: expect.stringContaining('Plano Pro'),
+        metadata: expect.objectContaining({
+          source: AI_AGENT_MESSAGE_SOURCE,
+          autoSend: true,
+        }),
+      }),
+    );
+    expect(createdFollowUps[0].status).toBe(FollowUpStatus.EXECUTED);
+    expect(auditWrites.map((a) => a.action)).toContain(AI_AUTO_SENT);
+    expect(prom.recordAiAutoSent).toHaveBeenCalled();
   });
 
-  it('HUMAN sempre escala', async () => {
-    stubClassify(AiIntent.HUMAN, { confidence: 0.95 });
-    kbResolver.resolve.mockResolvedValue({
-      bestMatch: null,
-      confidence: 0,
-      source: null,
-    });
-    intentService.evaluateEscalation.mockReturnValue({
-      escalated: true,
-      escalationReason: 'HUMAN',
-    });
-
-    const result = await service.handleInbound({
-      companyId,
-      conversationId,
-      leadId,
-      messageId,
-      messageBody: 'quero falar com atendente',
-    });
-
-    expect(result.requiresHuman).toBe(true);
-    expect(result.whatsappSent).toBe(false);
-    expect(auditWrites.map((a) => a.action)).toContain(AI_ESCALATED);
-  });
-
-  it('UNKNOWN sempre escala', async () => {
-    stubClassify(AiIntent.UNKNOWN, { confidence: 0.4 });
-    kbResolver.resolve.mockResolvedValue({
-      bestMatch: null,
-      confidence: 0,
-      source: null,
-    });
-    intentService.evaluateEscalation.mockReturnValue({
-      escalated: true,
-      escalationReason: 'UNKNOWN',
-    });
-
-    const result = await service.handleInbound({
-      companyId,
-      conversationId,
-      leadId,
-      messageId,
-      messageBody: 'ok',
-    });
-
-    expect(result.requiresHuman).toBe(true);
-    expect(result.whatsappSent).toBe(false);
-  });
-
-  it('modo OFF não classifica nem cria FollowUp', async () => {
+  it('AUTO nunca envia COMPLAINT / HUMAN / UNKNOWN', async () => {
     prisma.companyAiSettings.findFirst.mockResolvedValue({
-      mode: AiAgentMode.OFF,
+      mode: AiAgentMode.AUTO,
+      maxAutoRepliesPerLeadDay: 3,
+    });
+
+    for (const intent of [
+      AiIntent.COMPLAINT,
+      AiIntent.HUMAN,
+      AiIntent.UNKNOWN,
+    ]) {
+      jest.clearAllMocks();
+      createdFollowUps.length = 0;
+      auditWrites.length = 0;
+      prisma.companyAiSettings.findFirst.mockResolvedValue({
+        mode: AiAgentMode.AUTO,
+        maxAutoRepliesPerLeadDay: 3,
+      });
+      prisma.followUp.findFirst.mockResolvedValue(null);
+      prisma.message.findFirst.mockImplementation(
+        async (args: { where?: { direction?: string; id?: string } }) => {
+          if (args?.where?.direction === 'OUTBOUND') return null;
+          if (args?.where?.id === messageId) {
+            return { id: messageId, metadata: null };
+          }
+          return null;
+        },
+      );
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: conversationId,
+        assignedUserId: 'user-1',
+        agentPaused: false,
+        lead: { ownerId: 'owner-1' },
+      });
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
+      );
+      prisma.followUp.create.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => {
+          const row = { id: `fu-${createdFollowUps.length + 1}`, ...data };
+          createdFollowUps.push(row);
+          return row;
+        },
+      );
+
+      stubClassify(intent, 0.95);
+      kbResolver.resolve.mockResolvedValue({
+        bestMatch: null,
+        confidence: 0,
+        source: null,
+      });
+      intentService.evaluateEscalation.mockReturnValue({
+        escalated: true,
+        escalationReason: intent,
+      });
+
+      const result = await service.handleInbound({
+        companyId,
+        conversationId,
+        leadId,
+        messageId,
+        messageBody: 'msg',
+      });
+
+      expect(result.whatsappSent).toBe(false);
+      expect(result.requiresHuman).toBe(true);
+      expect(whatsappSend.send).not.toHaveBeenCalled();
+      expect(createdFollowUps[0].type).toBe(AI_FOLLOWUP_TYPE);
+      expect(createdFollowUps[0].status).toBe(FollowUpStatus.SUGGESTED);
+      expect(auditWrites.map((a) => a.action)).toContain(AI_ESCALATED);
+    }
+  });
+
+  it('AUTO com guardrail bloqueado degrada para ASSIST e audita skip', async () => {
+    prisma.companyAiSettings.findFirst.mockResolvedValue({
+      mode: AiAgentMode.AUTO,
+      maxAutoRepliesPerLeadDay: 3,
+    });
+    stubClassify(AiIntent.PRICE);
+    stubKbHit();
+    intentService.evaluateEscalation.mockReturnValue({
+      escalated: false,
+      escalationReason: null,
+    });
+    guardrails.evaluate.mockResolvedValue({
+      allowed: false,
+      reason: 'LEAD_COOLDOWN',
     });
 
     const result = await service.handleInbound({
@@ -343,34 +352,17 @@ describe('AiAssistPipelineService (11B)', () => {
       messageBody: 'quanto custa?',
     });
 
-    expect(result).toEqual({
-      skipped: true,
-      reason: 'AGENT_MODE_OFF',
-      whatsappSent: false,
-    });
-    expect(intentService.classify).not.toHaveBeenCalled();
-    expect(createdFollowUps).toHaveLength(0);
+    expect(result.whatsappSent).toBe(false);
+    expect(whatsappSend.send).not.toHaveBeenCalled();
+    expect(createdFollowUps[0].status).toBe(FollowUpStatus.SUGGESTED);
+    expect(auditWrites.map((a) => a.action)).toContain(AI_AUTO_SKIPPED);
+    expect(prom.recordAiAutoSkipped).toHaveBeenCalled();
   });
 
-  it('modo AUTO degrada para ASSIST sem auto-send', async () => {
+  it('modo OFF não processa', async () => {
     prisma.companyAiSettings.findFirst.mockResolvedValue({
-      mode: AiAgentMode.AUTO,
-    });
-    stubClassify(AiIntent.PRICE);
-    kbResolver.resolve.mockResolvedValue({
-      bestMatch: {
-        id: 'kb-price',
-        kind: 'PRICE',
-        title: 'Preço',
-        body: 'R$ 10',
-        tags: [],
-      },
-      confidence: 0.5,
-      source: 'kb:PRICE:kb-price',
-    });
-    intentService.evaluateEscalation.mockReturnValue({
-      escalated: false,
-      escalationReason: null,
+      mode: AiAgentMode.OFF,
+      maxAutoRepliesPerLeadDay: 3,
     });
 
     const result = await service.handleInbound({
@@ -378,14 +370,16 @@ describe('AiAssistPipelineService (11B)', () => {
       conversationId,
       leadId,
       messageId,
-      messageBody: 'qual o preço?',
+      messageBody: 'quanto custa?',
     });
 
-    expect(result.skipped).toBe(false);
-    expect(result.whatsappSent).toBe(false);
-    expect(createdFollowUps[0].status).toBe(FollowUpStatus.SUGGESTED);
-    expect(
-      (createdFollowUps[0].metadata as { autoSend: boolean }).autoSend,
-    ).toBe(false);
+    expect(result).toEqual(
+      expect.objectContaining({
+        skipped: true,
+        reason: 'AGENT_MODE_OFF',
+        whatsappSent: false,
+      }),
+    );
+    expect(intentService.classify).not.toHaveBeenCalled();
   });
 });

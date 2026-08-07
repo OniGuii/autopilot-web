@@ -42,15 +42,32 @@ export const AI_RESPONSE_GENERATED = 'AI_RESPONSE_GENERATED';
 export const AI_KB_MATCH_FOUND = 'AI_KB_MATCH_FOUND';
 export const AI_KB_MATCH_MISSED = 'AI_KB_MATCH_MISSED';
 
+/** Fase 11C — AUTO supervised audit actions. */
+export const AI_AUTO_SENT = 'AI_AUTO_SENT';
+export const AI_AUTO_SKIPPED = 'AI_AUTO_SKIPPED';
+
 export const AI_KB_BODY_MAX = 8000;
 export const AI_KB_TITLE_MAX = 200;
 export const AI_KB_PROMPT_BUDGET_CHARS = 8000;
 
-/** Deterministic KB-grounded reply template (no OpenAI / no auto-send). */
+/** Deterministic KB-grounded reply template. */
 export const AI_ASSIST_PROMPT_VERSION = 'assist-kb.v1';
 export const AI_ASSIST_MODEL = 'kb-template';
 export const AI_ASSIST_PIPELINE = 'assist-11b';
 export const AI_ASSIST_METADATA_MARKER = 'assist-11b' as const;
+
+/** Message.metadata.source for AUTO outbound (11C). */
+export const AI_AGENT_MESSAGE_SOURCE = 'ai_agent' as const;
+export const AI_AUTO_PIPELINE = 'auto-11c';
+export const AI_AUTO_PROMPT_VERSION = 'auto-kb.v1';
+
+/** Guardrails AUTO (11C). */
+export const AI_AUTO_MAX_PER_CONVERSATION = 8;
+export const AI_AUTO_MAX_PER_COMPANY_PER_MINUTE = 20;
+export const AI_AUTO_LEAD_COOLDOWN_SECONDS = 60;
+export const AI_AUTO_MIN_CONFIDENCE = 0.55;
+export const AI_AUTO_ANTI_LOOP_CONSECUTIVE = 2;
+export const AI_AUTO_RATE_KEY_PREFIX = 'autopilot:ai:auto-rate:';
 
 export function isAiFollowUpMetadata(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {

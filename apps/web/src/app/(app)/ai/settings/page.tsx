@@ -65,12 +65,17 @@ function AiSettingsContent() {
     <div className="space-y-6">
       <PageHeader
         title="Agente de IA"
-        description="Defina o modo do agente comercial supervisionado. O envio automático ainda não está ativo."
+        description="Modo supervisionado: ASSIST sugere; AUTO responde só com grounding na KB e guardrails."
         breadcrumbs={breadcrumbsForPath("/ai/settings")}
         actions={
-          <Button asChild variant="outline">
-            <Link href="/ai/knowledge-base">Base de conhecimento</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/ai/dashboard">Dashboard IA</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/ai/knowledge-base">Base de conhecimento</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -78,8 +83,9 @@ function AiSettingsContent() {
         <CardHeader>
           <CardTitle>Modo do agente</CardTitle>
           <CardDescription>
-            ASSIST é o padrão: a IA classifica e sugere; humanos aprovam. AUTO
-            pode ser salvo, mas na Fase 11A não envia mensagens.
+            ASSIST é o padrão (humano no loop). AUTO é opt-in: envia só
+            PRICE/PRODUCT/PAYMENT/DELIVERY/HOURS/ADDRESS com hit na KB.
+            COMPLAINT, HUMAN e UNKNOWN sempre escalam.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -110,11 +116,10 @@ function AiSettingsContent() {
             </p>
             <p className="mt-1">
               Envio automático:{" "}
-              <strong>{settings.autoEnabled ? "ligado" : "desligado"}</strong>{" "}
-              (reservado para a Fase 11C).
+              <strong>{settings.autoEnabled ? "ligado" : "desligado"}</strong>
             </p>
             <p className="mt-1">
-              Limite futuro de respostas automáticas por lead/dia:{" "}
+              Limite de respostas automáticas por lead/dia:{" "}
               {settings.maxAutoRepliesPerLeadDay}
             </p>
           </div>

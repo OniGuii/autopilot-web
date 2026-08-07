@@ -624,6 +624,8 @@ export type AiIntent =
   | "PRODUCT"
   | "PAYMENT"
   | "DELIVERY"
+  | "HOURS"
+  | "ADDRESS"
   | "COMPLAINT"
   | "HUMAN"
   | "UNKNOWN";
@@ -636,6 +638,21 @@ export type CompanyAiSettings = {
   maxAutoRepliesPerLeadDay: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AiDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  mode: AiAgentMode;
+  autoEnabled: boolean;
+  maxAutoRepliesPerLeadDay: number;
+  metrics: {
+    autoReplied: number;
+    escalatedToHuman: number;
+    automationRate: number | null;
+    kbEntriesActive: number;
+    pausedConversations: number;
+  };
 };
 
 export type KnowledgeBaseEntry = {
