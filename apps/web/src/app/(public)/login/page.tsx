@@ -76,12 +76,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
+    <div className="flex min-h-screen items-center justify-center overflow-x-hidden px-4 py-10">
       <div className="grid w-full max-w-5xl gap-8 md:grid-cols-[1.1fr_0.9fr] md:items-center">
-        <div className="space-y-5">
-          <div className="flex items-center gap-3">
-            <BrandMark className="h-10 w-10" />
-            <p className="font-display text-5xl leading-none tracking-tight text-foreground md:text-6xl">
+        <div className="min-w-0 max-w-full space-y-5 overflow-hidden">
+          <div className="flex min-w-0 max-w-full items-center gap-3 overflow-hidden">
+            <BrandMark size={40} className="h-10 w-10" />
+            <p className="min-w-0 font-display text-5xl leading-none tracking-tight text-foreground md:text-6xl">
               Autopilot
             </p>
           </div>

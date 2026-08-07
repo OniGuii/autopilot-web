@@ -264,12 +264,16 @@ function SettingsContent() {
                 {...form.register("logoUrl")}
               />
               {form.watch("logoUrl") ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={form.watch("logoUrl")}
-                  alt="Pré-visualização do logo"
-                  className="mt-2 h-12 object-contain"
-                />
+                <div className="mt-2 max-w-full overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={form.watch("logoUrl")}
+                    alt="Pré-visualização do logo"
+                    width={192}
+                    height={48}
+                    className="h-12 w-auto max-w-full object-contain"
+                  />
+                </div>
               ) : null}
             </div>
             <div className="space-y-2">

@@ -156,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[1440px]">
         <aside className="hidden w-64 shrink-0 border-r border-border/70 surface-panel p-4 lg:flex lg:flex-col">
-          <div className="px-1 py-2">
+          <div className="max-w-full overflow-hidden px-1 py-2">
             <BrandLogo subtitle="CRM comercial" />
           </div>
           <Separator className="my-3" />
@@ -177,7 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Menu className="h-4 w-4" />
               </Button>
-              <div className="min-w-0 lg:hidden">
+              <div className="min-w-0 max-w-full overflow-hidden lg:hidden">
                 <BrandLogo />
               </div>
               <div className="hidden min-w-0 lg:block">
@@ -216,8 +216,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setMobileOpen(false)}
               />
               <aside className="absolute inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col bg-white p-4 shadow-xl animate-in slide-in-from-left duration-200">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <BrandLogo subtitle="Menu" />
+                <div className="mb-2 flex max-w-full items-center justify-between gap-2 overflow-hidden">
+                  <BrandLogo subtitle="Menu" className="min-w-0 flex-1" />
                   <Button
                     type="button"
                     size="sm"

@@ -80,3 +80,24 @@ body {
   background: var(--surface-glass);
   backdrop-filter: blur(10px);
 }
+
+/* Branding / media hardening — prevent unbounded replaced elements */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Brand mark: hard cap even if Tailwind utilities fail to load */
+svg[data-brand-mark] {
+  display: block;
+  flex-shrink: 0;
+  max-width: min(100%, 4rem);
+  max-height: min(100%, 4rem);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+[data-brand-logo] {
+  max-width: 100%;
+  overflow: hidden;
+}

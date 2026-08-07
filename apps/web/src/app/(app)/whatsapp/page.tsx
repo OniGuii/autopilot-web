@@ -151,7 +151,7 @@ export default function WhatsAppPage() {
                 </p>
               ) : null}
               {query.data.status === "QR_PENDING" && query.data.qrCode ? (
-                <div className="rounded-lg border bg-muted/30 p-4">
+                <div className="max-w-full overflow-hidden rounded-lg border bg-muted/30 p-4">
                   <p className="mb-3 text-sm font-medium">
                     Escaneie o QR Code no WhatsApp do celular
                   </p>
@@ -163,7 +163,9 @@ export default function WhatsAppPage() {
                         : `data:image/png;base64,${query.data.qrCode}`
                     }
                     alt="QR Code WhatsApp"
-                    className="mx-auto max-w-xs rounded-md border bg-white p-2"
+                    width={256}
+                    height={256}
+                    className="mx-auto h-auto w-full max-w-xs rounded-md border bg-white p-2"
                   />
                 </div>
               ) : null}
