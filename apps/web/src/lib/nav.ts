@@ -11,6 +11,7 @@ const TITLES: Record<string, string> = {
   "/users": "Usuários",
   "/settings": "Configurações",
   "/ai/settings": "Agente de IA",
+  "/ai/dashboard": "Dashboard IA",
   "/ai/knowledge-base": "Base de conhecimento",
   "/exports": "Exportações",
   "/diagnostics": "Diagnósticos",
@@ -66,6 +67,13 @@ export function breadcrumbsForPath(pathname: string): Crumb[] {
   if (pathname === "/settings") return [home, { label: "Configurações" }];
   if (pathname === "/ai/settings") {
     return [home, { label: "Agente de IA" }];
+  }
+  if (pathname === "/ai/dashboard") {
+    return [
+      home,
+      { label: "Agente de IA", href: "/ai/settings" },
+      { label: "Dashboard IA" },
+    ];
   }
   if (pathname === "/ai/knowledge-base") {
     return [

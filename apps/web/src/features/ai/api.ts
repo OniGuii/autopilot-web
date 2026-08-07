@@ -3,6 +3,7 @@ import { endpoints } from "@/lib/api/endpoints";
 import type {
   AiAgentMode,
   AiClassifyResponse,
+  AiDashboardResponse,
   CompanyAiSettings,
   KnowledgeBaseEntry,
   KnowledgeBaseKind,
@@ -11,6 +12,10 @@ import type {
 
 export function fetchAiSettings() {
   return apiRequest<CompanyAiSettings>(endpoints.ai.settings);
+}
+
+export function fetchAiDashboard() {
+  return apiRequest<AiDashboardResponse>(endpoints.ai.dashboard);
 }
 
 export function updateAiSettings(input: {

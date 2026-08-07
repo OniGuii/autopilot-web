@@ -9,10 +9,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PrometheusMetricsService } from '../../observability/prometheus-metrics.service';
+import { newCorrelationId } from '../whatsapp/correlation';
+import { WhatsappSendService } from '../whatsapp/outbound/whatsapp-send.service';
 import {
+  AI_AGENT_MESSAGE_SOURCE,
   AI_ASSIST_MODEL,
   AI_ASSIST_PIPELINE,
   AI_ASSIST_PROMPT_VERSION,
+  AI_AUTO_PIPELINE,
+  AI_AUTO_PROMPT_VERSION,
+  AI_AUTO_SENT,
+  AI_AUTO_SKIPPED,
   AI_ESCALATED,
   AI_FOLLOWUP_TYPE,
   AI_INTENT_CLASSIFIED,
@@ -22,6 +29,7 @@ import {
   AI_RESPONSE_GENERATED,
   AI_SUGGESTION_MAX_CHARS,
 } from './ai.constants';
+import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiIntentService } from './ai-intent.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 
@@ -37,17 +45,19 @@ export type AssistPipelineResult = {
   skipped: boolean;
   reason?: string;
   followUpId?: string;
+  messageId?: string;
   intent?: AiIntent;
   requiresHuman?: boolean;
-  /** Always false in 11B — guardrail against auto-send. */
-  whatsappSent: false;
+  whatsappSent: boolean;
+  mode?: AiAgentMode;
+  correlationId?: string;
 };
 
-type AssistMetadata = {
+type PipelineMetadata = {
   source: typeof AI_METADATA_SOURCE;
-  pipeline: typeof AI_ASSIST_PIPELINE;
+  pipeline: string;
   model: typeof AI_ASSIST_MODEL;
-  promptVersion: typeof AI_ASSIST_PROMPT_VERSION;
+  promptVersion: string;
   intent: AiIntent;
   confidence: number;
   requiresHuman: boolean;
@@ -63,7 +73,10 @@ type AssistMetadata = {
   inboundMessageId: string;
   generatedAt: string;
   attemptCount: number;
-  autoSend: false;
+  autoSend: boolean;
+  correlationId?: string;
+  outboundMessageId?: string;
+  skipReason?: string;
 };
 
 @Injectable()
@@ -75,29 +88,31 @@ export class AiAssistPipelineService {
     private readonly audit: AuditService,
     private readonly intentService: AiIntentService,
     private readonly kbResolver: KnowledgeBaseResolver,
+    private readonly guardrails: AiAutoGuardrailsService,
+    @Optional() private readonly whatsappSend?: WhatsappSendService,
     @Optional() private readonly prom?: PrometheusMetricsService,
   ) {}
 
   /**
-   * Pós-inbound ASSIST (11B): classifica → KB → FollowUp SUGGESTED.
-   * Nunca envia WhatsApp. Erros são engolidos pelo caller (webhook rápido).
+   * Pós-inbound (11B/11C):
+   * - OFF → stop
+   * - ASSIST → FollowUp SUGGESTED
+   * - AUTO → send via WhatsappSendService when safe; else degrade ASSIST / escalate
    */
   async handleInbound(
     input: AssistInboundInput,
   ): Promise<AssistPipelineResult> {
-    const mode = await this.resolveMode(input.companyId);
-    if (mode === AiAgentMode.OFF) {
-      return { skipped: true, reason: 'AGENT_MODE_OFF', whatsappSent: false };
+    const settings = await this.resolveSettings(input.companyId);
+    if (settings.mode === AiAgentMode.OFF) {
+      return {
+        skipped: true,
+        reason: 'AGENT_MODE_OFF',
+        whatsappSent: false,
+        mode: AiAgentMode.OFF,
+      };
     }
 
-    // AUTO is stored but must not send until 11C — degrade to ASSIST path.
-    if (mode === AiAgentMode.AUTO) {
-      this.logger.debug(
-        `company=${input.companyId} mode=AUTO degraded to ASSIST (11B no auto-send)`,
-      );
-    }
-
-    const existing = await this.prisma.followUp.findFirst({
+    const already = await this.prisma.followUp.findFirst({
       where: {
         companyId: input.companyId,
         conversationId: input.conversationId,
@@ -110,12 +125,36 @@ export class AiAssistPipelineService {
       },
       select: { id: true },
     });
-    if (existing) {
+    if (already) {
       return {
         skipped: true,
         reason: 'ALREADY_PROCESSED',
-        followUpId: existing.id,
+        followUpId: already.id,
         whatsappSent: false,
+        mode: settings.mode,
+      };
+    }
+
+    // Dedup AUTO outbound already created for this inbound.
+    const existingOutbound = await this.prisma.message.findFirst({
+      where: {
+        companyId: input.companyId,
+        deletedAt: null,
+        direction: 'OUTBOUND',
+        metadata: {
+          path: ['inboundMessageId'],
+          equals: input.messageId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingOutbound) {
+      return {
+        skipped: true,
+        reason: 'ALREADY_PROCESSED_OUTBOUND',
+        messageId: existingOutbound.id,
+        whatsappSent: true,
+        mode: settings.mode,
       };
     }
 
@@ -141,7 +180,8 @@ export class AiAssistPipelineService {
       kbHit,
       kbRequired,
     );
-    const requiresHuman = escalation.escalated;
+    let requiresHuman = escalation.escalated;
+    let escalationReason = escalation.escalationReason;
 
     this.prom?.recordAiIntent(classification.intent);
     if (kbHit) {
@@ -149,12 +189,11 @@ export class AiAssistPipelineService {
     } else if (kbRequired) {
       this.prom?.recordAiKbMiss();
     }
-    if (requiresHuman) this.prom?.recordAiResponseEscalated();
 
     const suggestedBody = this.buildSuggestedBody({
       intent: classification.intent,
       requiresHuman,
-      escalationReason: escalation.escalationReason,
+      escalationReason,
       kbTitle: kb.bestMatch?.title,
       kbBody: kb.bestMatch?.body,
     });
@@ -168,6 +207,7 @@ export class AiAssistPipelineService {
       select: {
         id: true,
         assignedUserId: true,
+        agentPaused: true,
         lead: { select: { ownerId: true } },
       },
     });
@@ -176,33 +216,86 @@ export class AiAssistPipelineService {
         skipped: true,
         reason: 'CONVERSATION_NOT_FOUND',
         whatsappSent: false,
+        mode: settings.mode,
       };
     }
 
     const assignedUserId =
       conversation.assignedUserId ?? conversation.lead.ownerId ?? null;
 
-    const metadata: AssistMetadata = {
+    const neverAuto =
+      classification.intent === AiIntent.COMPLAINT ||
+      classification.intent === AiIntent.HUMAN ||
+      classification.intent === AiIntent.UNKNOWN ||
+      !this.intentService.isAutoSafeIntent(classification.intent);
+
+    const wantAuto =
+      settings.mode === AiAgentMode.AUTO &&
+      !neverAuto &&
+      kbHit &&
+      !requiresHuman;
+
+    if (wantAuto && this.whatsappSend) {
+      const gate = await this.guardrails.evaluate({
+        companyId: input.companyId,
+        conversationId: input.conversationId,
+        leadId: input.leadId,
+        confidence: classification.confidence,
+        maxAutoRepliesPerLeadDay: settings.maxAutoRepliesPerLeadDay,
+        agentPaused: conversation.agentPaused,
+      });
+
+      if (gate.allowed) {
+        return this.executeAutoSend(input, {
+          classification,
+          kb,
+          kbHit,
+          requiresHuman: false,
+          escalationReason: null,
+          suggestedBody,
+          assignedUserId,
+          mode: settings.mode,
+        });
+      }
+
+      this.prom?.recordAiAutoSkipped();
+      await this.auditStandalone(input, AI_AUTO_SKIPPED, {
+        intent: classification.intent,
+        reason: gate.reason,
+        pipeline: AI_AUTO_PIPELINE,
+      });
+      // Degrade to ASSIST suggestion path.
+      this.logger.debug(
+        `AUTO skipped company=${input.companyId} reason=${gate.reason}`,
+      );
+    } else if (settings.mode === AiAgentMode.AUTO && neverAuto) {
+      requiresHuman = true;
+      escalationReason = escalationReason ?? classification.intent;
+    } else if (settings.mode === AiAgentMode.AUTO && !kbHit && kbRequired) {
+      requiresHuman = true;
+      escalationReason =
+        escalationReason ?? `${classification.intent}_WITHOUT_KB`;
+    }
+
+    if (requiresHuman) this.prom?.recordAiResponseEscalated();
+
+    const pauseAgent =
+      classification.intent === AiIntent.COMPLAINT ||
+      classification.intent === AiIntent.HUMAN;
+
+    const metadata: PipelineMetadata = {
       source: AI_METADATA_SOURCE,
-      pipeline: AI_ASSIST_PIPELINE,
+      pipeline:
+        settings.mode === AiAgentMode.AUTO
+          ? AI_AUTO_PIPELINE
+          : AI_ASSIST_PIPELINE,
       model: AI_ASSIST_MODEL,
       promptVersion: AI_ASSIST_PROMPT_VERSION,
       intent: classification.intent,
       confidence: classification.confidence,
       requiresHuman,
-      escalationReason: escalation.escalationReason,
-      kb: {
-        hit: kbHit,
-        ...(kb.bestMatch
-          ? {
-              entryId: kb.bestMatch.id,
-              title: kb.bestMatch.title,
-              kind: kb.bestMatch.kind,
-              confidence: kb.confidence,
-              source: kb.source,
-            }
-          : { confidence: kb.confidence, source: kb.source }),
-      },
+      escalationReason,
+      kb: this.kbMeta(kbHit, kb),
       inboundMessageId: input.messageId,
       generatedAt: new Date().toISOString(),
       attemptCount: 0,
@@ -215,43 +308,26 @@ export class AiAssistPipelineService {
         confidence: classification.confidence,
         rationale: classification.rationale,
         requiresHuman,
-        escalationReason: escalation.escalationReason,
+        escalationReason,
         kbHit,
         kb,
         suggestedBody,
+        autoSend: false,
+        pipeline: metadata.pipeline,
       });
 
-      // Persist classification on inbound message for timeline/debug.
-      const msg = await tx.message.findFirst({
-        where: {
-          id: input.messageId,
-          companyId: input.companyId,
-          deletedAt: null,
-        },
-        select: { id: true, metadata: true },
+      await this.persistMessageIntent(tx, input, {
+        intent: classification.intent,
+        confidence: classification.confidence,
+        requiresHuman,
+        escalationReason,
+        pipeline: metadata.pipeline,
       });
-      if (msg) {
-        const prev =
-          msg.metadata &&
-          typeof msg.metadata === 'object' &&
-          !Array.isArray(msg.metadata)
-            ? (msg.metadata as Record<string, unknown>)
-            : {};
-        await tx.message.update({
-          where: { id: msg.id },
-          data: {
-            metadata: {
-              ...prev,
-              aiIntent: {
-                intent: classification.intent,
-                confidence: classification.confidence,
-                requiresHuman,
-                escalationReason: escalation.escalationReason,
-                classifiedAt: new Date().toISOString(),
-                pipeline: AI_ASSIST_PIPELINE,
-              },
-            },
-          },
+
+      if (pauseAgent) {
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: { agentPaused: true },
         });
       }
 
@@ -278,15 +354,228 @@ export class AiAssistPipelineService {
       intent: classification.intent,
       requiresHuman,
       whatsappSent: false,
+      mode: settings.mode,
     };
   }
 
-  private async resolveMode(companyId: string): Promise<AiAgentMode> {
+  private async executeAutoSend(
+    input: AssistInboundInput,
+    ctx: {
+      classification: {
+        intent: AiIntent;
+        confidence: number;
+        rationale: string;
+      };
+      kb: Awaited<ReturnType<KnowledgeBaseResolver['resolve']>>;
+      kbHit: boolean;
+      requiresHuman: boolean;
+      escalationReason: string | null;
+      suggestedBody: string;
+      assignedUserId: string | null;
+      mode: AiAgentMode;
+    },
+  ): Promise<AssistPipelineResult> {
+    const correlationId = newCorrelationId();
+    const actorSub = ctx.assignedUserId ?? input.companyId;
+
+    try {
+      const sent = await this.whatsappSend!.send(
+        { cid: input.companyId, sub: actorSub } as never,
+        {
+          leadId: input.leadId,
+          conversationId: input.conversationId,
+          body: ctx.suggestedBody,
+          metadata: {
+            source: AI_AGENT_MESSAGE_SOURCE,
+            correlationId,
+            inboundMessageId: input.messageId,
+            intent: ctx.classification.intent,
+            pipeline: AI_AUTO_PIPELINE,
+            autoSend: true,
+          },
+        },
+      );
+
+      const metadata: PipelineMetadata = {
+        source: AI_METADATA_SOURCE,
+        pipeline: AI_AUTO_PIPELINE,
+        model: AI_ASSIST_MODEL,
+        promptVersion: AI_AUTO_PROMPT_VERSION,
+        intent: ctx.classification.intent,
+        confidence: ctx.classification.confidence,
+        requiresHuman: false,
+        escalationReason: null,
+        kb: this.kbMeta(ctx.kbHit, ctx.kb),
+        inboundMessageId: input.messageId,
+        generatedAt: new Date().toISOString(),
+        attemptCount: 0,
+        autoSend: true,
+        correlationId: sent.correlationId,
+        outboundMessageId: sent.messageId,
+      };
+
+      const followUp = await this.prisma.$transaction(async (tx) => {
+        await this.writePipelineAudits(tx, input, {
+          intent: ctx.classification.intent,
+          confidence: ctx.classification.confidence,
+          rationale: ctx.classification.rationale,
+          requiresHuman: false,
+          escalationReason: null,
+          kbHit: ctx.kbHit,
+          kb: ctx.kb,
+          suggestedBody: ctx.suggestedBody,
+          autoSend: true,
+          pipeline: AI_AUTO_PIPELINE,
+          correlationId: sent.correlationId,
+          outboundMessageId: sent.messageId,
+        });
+
+        await this.persistMessageIntent(tx, input, {
+          intent: ctx.classification.intent,
+          confidence: ctx.classification.confidence,
+          requiresHuman: false,
+          escalationReason: null,
+          pipeline: AI_AUTO_PIPELINE,
+        });
+
+        await this.audit.write(tx, {
+          companyId: input.companyId,
+          actorUserId: null,
+          action: AI_AUTO_SENT,
+          targetType: 'MESSAGE',
+          targetId: sent.messageId,
+          before: null,
+          after: {
+            conversationId: input.conversationId,
+            leadId: input.leadId,
+            inboundMessageId: input.messageId,
+            intent: ctx.classification.intent,
+            correlationId: sent.correlationId,
+            autoSend: true,
+            pipeline: AI_AUTO_PIPELINE,
+          },
+        });
+
+        return tx.followUp.create({
+          data: {
+            companyId: input.companyId,
+            conversationId: input.conversationId,
+            leadId: input.leadId,
+            assignedUserId: ctx.assignedUserId,
+            type: AI_FOLLOWUP_TYPE,
+            channel: Channel.WHATSAPP,
+            status: FollowUpStatus.EXECUTED,
+            suggestedBody: ctx.suggestedBody,
+            executedAt: new Date(),
+            resultMessageId: sent.messageId,
+            metadata,
+          },
+        });
+      });
+
+      this.prom?.recordAiResponseGenerated();
+      this.prom?.recordAiAutoSent();
+
+      return {
+        skipped: false,
+        followUpId: followUp.id,
+        messageId: sent.messageId,
+        intent: ctx.classification.intent,
+        requiresHuman: false,
+        whatsappSent: true,
+        mode: ctx.mode,
+        correlationId: sent.correlationId,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `AUTO send failed company=${input.companyId} conversation=${input.conversationId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      this.prom?.recordAiAutoSkipped();
+      await this.auditStandalone(input, AI_AUTO_SKIPPED, {
+        intent: ctx.classification.intent,
+        reason: 'SEND_FAILED',
+        error: err instanceof Error ? err.message : String(err),
+        pipeline: AI_AUTO_PIPELINE,
+        correlationId,
+      });
+
+      // Degrade to ASSIST suggestion.
+      const metadata: PipelineMetadata = {
+        source: AI_METADATA_SOURCE,
+        pipeline: AI_AUTO_PIPELINE,
+        model: AI_ASSIST_MODEL,
+        promptVersion: AI_ASSIST_PROMPT_VERSION,
+        intent: ctx.classification.intent,
+        confidence: ctx.classification.confidence,
+        requiresHuman: false,
+        escalationReason: null,
+        kb: this.kbMeta(ctx.kbHit, ctx.kb),
+        inboundMessageId: input.messageId,
+        generatedAt: new Date().toISOString(),
+        attemptCount: 0,
+        autoSend: false,
+        skipReason: 'SEND_FAILED',
+        correlationId,
+      };
+
+      const followUp = await this.prisma.followUp.create({
+        data: {
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          leadId: input.leadId,
+          assignedUserId: ctx.assignedUserId,
+          type: AI_FOLLOWUP_TYPE,
+          channel: Channel.WHATSAPP,
+          status: FollowUpStatus.SUGGESTED,
+          suggestedBody: ctx.suggestedBody,
+          metadata,
+        },
+      });
+
+      this.prom?.recordAiResponseGenerated();
+
+      return {
+        skipped: false,
+        followUpId: followUp.id,
+        intent: ctx.classification.intent,
+        requiresHuman: false,
+        whatsappSent: false,
+        mode: ctx.mode,
+        reason: 'SEND_FAILED_DEGRADED_ASSIST',
+        correlationId,
+      };
+    }
+  }
+
+  private async resolveSettings(companyId: string) {
     const row = await this.prisma.companyAiSettings.findFirst({
       where: { companyId, deletedAt: null },
-      select: { mode: true },
+      select: { mode: true, maxAutoRepliesPerLeadDay: true },
     });
-    return row?.mode ?? AiAgentMode.ASSIST;
+    return {
+      mode: row?.mode ?? AiAgentMode.ASSIST,
+      maxAutoRepliesPerLeadDay: row?.maxAutoRepliesPerLeadDay ?? 3,
+    };
+  }
+
+  private kbMeta(
+    kbHit: boolean,
+    kb: Awaited<ReturnType<KnowledgeBaseResolver['resolve']>>,
+  ) {
+    return {
+      hit: kbHit,
+      ...(kb.bestMatch
+        ? {
+            entryId: kb.bestMatch.id,
+            title: kb.bestMatch.title,
+            kind: kb.bestMatch.kind,
+            confidence: kb.confidence,
+            source: kb.source,
+          }
+        : { confidence: kb.confidence, source: kb.source }),
+    };
   }
 
   private buildSuggestedBody(input: {
@@ -341,6 +630,78 @@ export class AiAssistPipelineService {
     return body;
   }
 
+  private async persistMessageIntent(
+    tx: Prisma.TransactionClient,
+    input: AssistInboundInput,
+    data: {
+      intent: AiIntent;
+      confidence: number;
+      requiresHuman: boolean;
+      escalationReason: string | null;
+      pipeline: string;
+    },
+  ) {
+    const msg = await tx.message.findFirst({
+      where: {
+        id: input.messageId,
+        companyId: input.companyId,
+        deletedAt: null,
+      },
+      select: { id: true, metadata: true },
+    });
+    if (!msg) return;
+    const prev =
+      msg.metadata &&
+      typeof msg.metadata === 'object' &&
+      !Array.isArray(msg.metadata)
+        ? (msg.metadata as Record<string, unknown>)
+        : {};
+    await tx.message.update({
+      where: { id: msg.id },
+      data: {
+        metadata: {
+          ...prev,
+          aiIntent: {
+            intent: data.intent,
+            confidence: data.confidence,
+            requiresHuman: data.requiresHuman,
+            escalationReason: data.escalationReason,
+            classifiedAt: new Date().toISOString(),
+            pipeline: data.pipeline,
+          },
+        },
+      },
+    });
+  }
+
+  private async auditStandalone(
+    input: AssistInboundInput,
+    action: string,
+    after: Record<string, unknown>,
+  ) {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.audit.write(tx, {
+          companyId: input.companyId,
+          actorUserId: null,
+          action,
+          targetType: 'CONVERSATION',
+          targetId: input.conversationId,
+          before: null,
+          after: {
+            ...after,
+            messageId: input.messageId,
+            leadId: input.leadId,
+          },
+        });
+      });
+    } catch (err) {
+      this.logger.warn(
+        `audit ${action} failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   private async writePipelineAudits(
     tx: Prisma.TransactionClient,
     input: AssistInboundInput,
@@ -353,6 +714,10 @@ export class AiAssistPipelineService {
       kbHit: boolean;
       kb: Awaited<ReturnType<KnowledgeBaseResolver['resolve']>>;
       suggestedBody: string;
+      autoSend: boolean;
+      pipeline: string;
+      correlationId?: string;
+      outboundMessageId?: string;
     },
   ): Promise<void> {
     const companyId = input.companyId;
@@ -370,7 +735,7 @@ export class AiAssistPipelineService {
         rationale: ctx.rationale,
         messageId: input.messageId,
         leadId: input.leadId,
-        pipeline: AI_ASSIST_PIPELINE,
+        pipeline: ctx.pipeline,
       },
     });
 
@@ -422,8 +787,10 @@ export class AiAssistPipelineService {
         suggestionPreview: ctx.suggestedBody.slice(0, 200),
         messageId: input.messageId,
         leadId: input.leadId,
-        autoSend: false,
-        pipeline: AI_ASSIST_PIPELINE,
+        autoSend: ctx.autoSend,
+        pipeline: ctx.pipeline,
+        correlationId: ctx.correlationId ?? null,
+        outboundMessageId: ctx.outboundMessageId ?? null,
       },
     });
 
@@ -441,7 +808,7 @@ export class AiAssistPipelineService {
           requiresHuman: true,
           messageId: input.messageId,
           leadId: input.leadId,
-          pipeline: AI_ASSIST_PIPELINE,
+          pipeline: ctx.pipeline,
         },
       });
     }

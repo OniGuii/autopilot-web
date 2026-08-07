@@ -20,6 +20,7 @@ import {
   Sparkles,
   Bot,
   BookOpen,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessNav, type NavItemId } from "@/lib/auth/rbac";
@@ -49,6 +50,13 @@ const NAV: NavItem[] = [
   { id: "users", href: "/users", label: "Usuários", icon: UserCog, group: "admin" },
   { id: "settings", href: "/settings", label: "Configurações", icon: Settings, group: "admin" },
   { id: "ai-settings", href: "/ai/settings", label: "Agente de IA", icon: Bot, group: "admin" },
+  {
+    id: "ai-dashboard",
+    href: "/ai/dashboard",
+    label: "Dashboard IA",
+    icon: Gauge,
+    group: "admin",
+  },
   {
     id: "ai-knowledge-base",
     href: "/ai/knowledge-base",

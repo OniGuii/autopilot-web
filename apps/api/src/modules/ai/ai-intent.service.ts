@@ -41,6 +41,8 @@ const INTENT_TO_KB: Partial<Record<AiIntent, KnowledgeBaseKind[]>> = {
   [AiIntent.PRODUCT]: [KnowledgeBaseKind.PRODUCT, KnowledgeBaseKind.PRICE],
   [AiIntent.PAYMENT]: [KnowledgeBaseKind.PAYMENT],
   [AiIntent.DELIVERY]: [KnowledgeBaseKind.DELIVERY, KnowledgeBaseKind.ADDRESS],
+  [AiIntent.HOURS]: [KnowledgeBaseKind.HOURS, KnowledgeBaseKind.FAQ],
+  [AiIntent.ADDRESS]: [KnowledgeBaseKind.ADDRESS, KnowledgeBaseKind.DELIVERY],
 };
 
 @Injectable()
@@ -124,18 +126,31 @@ export class AiIntentService {
       if (intent === AiIntent.DELIVERY) {
         return { escalated: true, escalationReason: 'DELIVERY_WITHOUT_KB' };
       }
+      if (intent === AiIntent.HOURS) {
+        return { escalated: true, escalationReason: 'HOURS_WITHOUT_KB' };
+      }
+      if (intent === AiIntent.ADDRESS) {
+        return { escalated: true, escalationReason: 'ADDRESS_WITHOUT_KB' };
+      }
     }
     return { escalated: false, escalationReason: null };
   }
 
-  /** Intents that require KB grounding before a safe ASSIST draft. */
+  /** Intents that require KB grounding before a safe draft / AUTO send. */
   intentRequiresKb(intent: AiIntent): boolean {
     return (
       intent === AiIntent.PRICE ||
       intent === AiIntent.PRODUCT ||
       intent === AiIntent.PAYMENT ||
-      intent === AiIntent.DELIVERY
+      intent === AiIntent.DELIVERY ||
+      intent === AiIntent.HOURS ||
+      intent === AiIntent.ADDRESS
     );
+  }
+
+  /** Intents elegíveis para AUTO send (11C). Nunca COMPLAINT/HUMAN/UNKNOWN. */
+  isAutoSafeIntent(intent: AiIntent): boolean {
+    return this.intentRequiresKb(intent);
   }
 
   /** Deterministic PT-BR keyword classifier (11A — no OpenAI dependency). */
@@ -190,6 +205,22 @@ export class AiIntentService {
           patterns: [
             /\b(entrega|frete|prazo de entrega|retirada|buscar a[ií]|envia(m|r)?)\b/i,
             /\b(delivery|sedex|correios)\b/i,
+          ],
+        },
+        {
+          intent: AiIntent.HOURS,
+          conf: 0.87,
+          patterns: [
+            /\b(hor[aá]rio|funcionamento|abre|abrem|fecha|fecham|que horas)\b/i,
+            /\b(aberto (hoje|agora)|atendem (hoje|agora)|expediente)\b/i,
+          ],
+        },
+        {
+          intent: AiIntent.ADDRESS,
+          conf: 0.87,
+          patterns: [
+            /\b(endere[cç]o|localiza[cç][aã]o|onde (fica|ficam|voc[eê]s)|como chegar)\b/i,
+            /\b(rua|avenida|mapa|maps|cep)\b/i,
           ],
         },
         {

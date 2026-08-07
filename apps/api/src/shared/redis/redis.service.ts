@@ -118,6 +118,29 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Soft-fail INCR with expire on first hit.
+   * Returns null when Redis is unavailable (caller decides fail-open/closed).
+   */
+  async incrWithExpire(
+    key: string,
+    ttlSeconds: number,
+  ): Promise<number | null> {
+    try {
+      await this.ensureConnected();
+      const n = await this.client.incr(key);
+      if (n === 1) {
+        await this.client.expire(key, ttlSeconds);
+      }
+      return n;
+    } catch (err) {
+      this.logger.warn(
+        `redis incrWithExpire failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
   /** Soft-fail delete. */
   async del(...keys: string[]): Promise<void> {
     if (keys.length === 0) return;

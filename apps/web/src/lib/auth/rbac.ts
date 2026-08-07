@@ -11,6 +11,7 @@ export type NavItemId =
   | "users"
   | "settings"
   | "ai-settings"
+  | "ai-dashboard"
   | "ai-knowledge-base"
   | "exports"
   | "diagnostics"

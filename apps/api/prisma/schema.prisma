@@ -130,12 +130,14 @@ enum KnowledgeBaseKind {
   ADDRESS
 }
 
-/// Fase 11A — Intent classifier labels.
+/// Fase 11A/11C — Intent classifier labels.
 enum AiIntent {
   PRICE
   PRODUCT
   PAYMENT
   DELIVERY
+  HOURS
+  ADDRESS
   COMPLAINT
   HUMAN
   UNKNOWN
@@ -403,6 +405,8 @@ model Conversation {
   externalThreadId String?            @map("external_thread_id") @db.VarChar(191)
   lastMessageAt    DateTime?          @map("last_message_at") @db.Timestamptz(6)
   assignedUserId   String?            @map("assigned_user_id") @db.Uuid
+  /// Fase 11C — when true, AUTO must not send until human resumes.
+  agentPaused      Boolean            @default(false) @map("agent_paused")
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?          @map("deleted_at") @db.Timestamptz(6)
@@ -601,14 +605,14 @@ model WebhookEvent {
 
 /// Fase 11A — per-company AI agent settings (1:1).
 model CompanyAiSettings {
-  id                      String      @id @default(uuid()) @db.Uuid
-  companyId               String      @unique @map("company_id") @db.Uuid
-  mode                    AiAgentMode @default(ASSIST)
-  /// Reserved for 11C AUTO; stored now, not enforced yet.
-  maxAutoRepliesPerLeadDay Int        @default(3) @map("max_auto_replies_per_lead_day")
-  createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt               DateTime?   @map("deleted_at") @db.Timestamptz(6)
+  id                       String      @id @default(uuid()) @db.Uuid
+  companyId                String      @unique @map("company_id") @db.Uuid
+  mode                     AiAgentMode @default(ASSIST)
+  /// Cap of AUTO outbounds per lead per day (11C guardrail).
+  maxAutoRepliesPerLeadDay Int         @default(3) @map("max_auto_replies_per_lead_day")
+  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime?   @map("deleted_at") @db.Timestamptz(6)
 
   company Company @relation(fields: [companyId], references: [id])
 

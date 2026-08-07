@@ -81,6 +81,22 @@ describe('AiIntentService (11A)', () => {
       expect(hit.intent).toBe(AiIntent.PRODUCT);
     });
 
+    it('detects HOURS', () => {
+      const hit = service.classifyHeuristic(
+        'qual o horário de funcionamento?',
+        'qual o horário de funcionamento?',
+      );
+      expect(hit.intent).toBe(AiIntent.HOURS);
+    });
+
+    it('detects ADDRESS', () => {
+      const hit = service.classifyHeuristic(
+        'qual o endereço de vocês?',
+        'qual o endereço de vocês?',
+      );
+      expect(hit.intent).toBe(AiIntent.ADDRESS);
+    });
+
     it('falls back to UNKNOWN', () => {
       const hit = service.classifyHeuristic('ok', 'ok');
       expect(hit.intent).toBe(AiIntent.UNKNOWN);

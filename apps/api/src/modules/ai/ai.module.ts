@@ -1,9 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { QueueModule } from '../async/queue.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AiAssistPipelineService } from './ai-assist-pipeline.service';
+import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiController } from './ai.controller';
+import { AiDashboardService } from './ai-dashboard.service';
 import { AiIntentService } from './ai-intent.service';
 import { AiService } from './ai.service';
 import { AiSettingsController } from './ai-settings.controller';
@@ -14,7 +17,12 @@ import { KnowledgeBaseService } from './knowledge-base.service';
 import { OpenAiClient } from './openai.client';
 
 @Module({
-  imports: [AuthModule, AuditModule, QueueModule],
+  imports: [
+    AuthModule,
+    AuditModule,
+    QueueModule,
+    forwardRef(() => WhatsappModule),
+  ],
   controllers: [AiController, AiSettingsController, KnowledgeBaseController],
   providers: [
     AiService,
@@ -23,7 +31,9 @@ import { OpenAiClient } from './openai.client';
     KnowledgeBaseService,
     KnowledgeBaseResolver,
     AiIntentService,
+    AiAutoGuardrailsService,
     AiAssistPipelineService,
+    AiDashboardService,
   ],
   exports: [
     AiService,
@@ -32,6 +42,7 @@ import { OpenAiClient } from './openai.client';
     KnowledgeBaseResolver,
     AiSettingsService,
     AiAssistPipelineService,
+    AiDashboardService,
   ],
 })
 export class AiModule {}

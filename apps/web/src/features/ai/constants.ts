@@ -3,7 +3,7 @@ import type { AiAgentMode, KnowledgeBaseKind } from "@/lib/api/types";
 export const AI_MODE_LABEL: Record<AiAgentMode, string> = {
   OFF: "Desligado",
   ASSIST: "Assistido (recomendado)",
-  AUTO: "Automático (em breve)",
+  AUTO: "Automático (opt-in)",
 };
 
 export const KB_KIND_LABEL: Record<KnowledgeBaseKind, string> = {

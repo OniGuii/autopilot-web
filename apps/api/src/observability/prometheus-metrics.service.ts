@@ -52,6 +52,8 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiIntentProduct: Counter<string>;
   readonly aiIntentPayment: Counter<string>;
   readonly aiIntentDelivery: Counter<string>;
+  readonly aiIntentHours: Counter<string>;
+  readonly aiIntentAddress: Counter<string>;
   readonly aiIntentComplaint: Counter<string>;
   readonly aiIntentHuman: Counter<string>;
   readonly aiIntentUnknown: Counter<string>;
@@ -59,6 +61,8 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiResponseEscalated: Counter<string>;
   readonly aiKbHit: Counter<string>;
   readonly aiKbMiss: Counter<string>;
+  readonly aiAutoSent: Counter<string>;
+  readonly aiAutoSkipped: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -214,6 +218,16 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       help: 'AI intent DELIVERY (Fase 11B)',
       registers: [this.registry],
     });
+    this.aiIntentHours = new Counter({
+      name: 'ai_intent_hours',
+      help: 'AI intent HOURS (Fase 11C)',
+      registers: [this.registry],
+    });
+    this.aiIntentAddress = new Counter({
+      name: 'ai_intent_address',
+      help: 'AI intent ADDRESS (Fase 11C)',
+      registers: [this.registry],
+    });
     this.aiIntentComplaint = new Counter({
       name: 'ai_intent_complaint',
       help: 'AI intent COMPLAINT (Fase 11B)',
@@ -247,6 +261,16 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
     this.aiKbMiss = new Counter({
       name: 'ai_kb_miss',
       help: 'AI knowledge-base resolver misses (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiAutoSent = new Counter({
+      name: 'ai_auto_sent',
+      help: 'AI AUTO WhatsApp replies sent (Fase 11C)',
+      registers: [this.registry],
+    });
+    this.aiAutoSkipped = new Counter({
+      name: 'ai_auto_skipped',
+      help: 'AI AUTO sends skipped / degraded (Fase 11C)',
       registers: [this.registry],
     });
 
@@ -407,6 +431,12 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       case 'DELIVERY':
         this.aiIntentDelivery.inc();
         break;
+      case 'HOURS':
+        this.aiIntentHours.inc();
+        break;
+      case 'ADDRESS':
+        this.aiIntentAddress.inc();
+        break;
       case 'COMPLAINT':
         this.aiIntentComplaint.inc();
         break;
@@ -433,6 +463,14 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordAiKbMiss(): void {
     this.aiKbMiss.inc();
+  }
+
+  recordAiAutoSent(): void {
+    this.aiAutoSent.inc();
+  }
+
+  recordAiAutoSkipped(): void {
+    this.aiAutoSkipped.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {

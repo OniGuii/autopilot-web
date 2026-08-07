@@ -81,6 +81,7 @@ export const endpoints = {
   },
   ai: {
     settings: "/api/ai/settings",
+    dashboard: "/api/ai/dashboard",
     classify: "/api/ai/classify",
   },
   knowledgeBase: {
