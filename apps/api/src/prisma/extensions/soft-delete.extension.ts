@@ -26,6 +26,8 @@ export const SOFT_DELETE_MODELS = [
   'webhookEvent',
   'leadNote',
   'leadActivity',
+  'companyAiSettings',
+  'knowledgeBaseEntry',
 ] as const;
 
 export type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];

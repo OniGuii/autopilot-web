@@ -28,6 +28,19 @@ export const AI_SUGGESTION_GENERATED = 'AI_SUGGESTION_GENERATED';
 export const AI_SUGGESTION_APPROVED = 'AI_SUGGESTION_APPROVED';
 export const AI_SUGGESTION_REJECTED = 'AI_SUGGESTION_REJECTED';
 
+/** Fase 11A — agent audit actions. */
+export const AI_INTENT_CLASSIFIED = 'AI_INTENT_CLASSIFIED';
+export const AI_ESCALATED = 'AI_ESCALATED';
+export const AI_KB_MATCHED = 'AI_KB_MATCHED';
+export const AI_SETTINGS_UPDATE = 'AI_SETTINGS_UPDATE';
+export const AI_KB_CREATED = 'AI_KB_CREATED';
+export const AI_KB_UPDATED = 'AI_KB_UPDATED';
+export const AI_KB_DELETED = 'AI_KB_DELETED';
+
+export const AI_KB_BODY_MAX = 8000;
+export const AI_KB_TITLE_MAX = 200;
+export const AI_KB_PROMPT_BUDGET_CHARS = 8000;
+
 export function isAiFollowUpMetadata(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return false;

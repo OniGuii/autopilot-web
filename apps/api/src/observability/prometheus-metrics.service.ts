@@ -43,6 +43,9 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiFailedTotal: Counter<string>;
   readonly aiTokensTotal: Counter<string>;
   readonly aiDuration: Histogram<string>;
+  readonly aiClassificationsTotal: Counter<string>;
+  readonly aiEscalationsTotal: Counter<string>;
+  readonly aiKbMatchesTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -156,6 +159,21 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       name: 'ai_suggestion_duration_seconds',
       help: 'AI suggestion generation duration',
       buckets: [0.5, 1, 2, 5, 10, 25, 60],
+      registers: [this.registry],
+    });
+    this.aiClassificationsTotal = new Counter({
+      name: 'ai_classifications_total',
+      help: 'AI intent classifications (Fase 11A)',
+      registers: [this.registry],
+    });
+    this.aiEscalationsTotal = new Counter({
+      name: 'ai_escalations_total',
+      help: 'AI escalations to human (Fase 11A)',
+      registers: [this.registry],
+    });
+    this.aiKbMatchesTotal = new Counter({
+      name: 'ai_kb_matches_total',
+      help: 'AI knowledge-base matches (Fase 11A)',
       registers: [this.registry],
     });
 
@@ -287,6 +305,18 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordAiFailure(): void {
     this.aiFailedTotal.inc();
+  }
+
+  recordAiClassification(): void {
+    this.aiClassificationsTotal.inc();
+  }
+
+  recordAiEscalation(): void {
+    this.aiEscalationsTotal.inc();
+  }
+
+  recordAiKbMatch(): void {
+    this.aiKbMatchesTotal.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {

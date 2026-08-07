@@ -18,6 +18,8 @@ import {
   UserCog,
   X,
   Sparkles,
+  Bot,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessNav, type NavItemId } from "@/lib/auth/rbac";
@@ -46,6 +48,14 @@ const NAV: NavItem[] = [
   { id: "team", href: "/team", label: "Equipe", icon: Users, group: "admin" },
   { id: "users", href: "/users", label: "Usuários", icon: UserCog, group: "admin" },
   { id: "settings", href: "/settings", label: "Configurações", icon: Settings, group: "admin" },
+  { id: "ai-settings", href: "/ai/settings", label: "Agente de IA", icon: Bot, group: "admin" },
+  {
+    id: "ai-knowledge-base",
+    href: "/ai/knowledge-base",
+    label: "Base de conhecimento",
+    icon: BookOpen,
+    group: "admin",
+  },
   { id: "exports", href: "/exports", label: "Exportações", icon: Download, group: "admin" },
   { id: "diagnostics", href: "/diagnostics", label: "Diagnósticos", icon: Activity, group: "admin" },
   { id: "setup", href: "/setup", label: "Primeiros passos", icon: Sparkles, group: "admin" },

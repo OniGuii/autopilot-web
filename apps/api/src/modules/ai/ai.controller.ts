@@ -18,19 +18,24 @@ import { CompanyContextGuard } from '../auth/guards/company-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { AiIntentService } from './ai-intent.service';
 import { AiService } from './ai.service';
+import { ClassifyIntentDto } from './dto/classify-intent.dto';
 import { SuggestReplyDto } from './dto/suggest-reply.dto';
 
 @ApiTags('ai')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, CompanyContextGuard, RolesGuard)
-@Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
 @Controller('ai')
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(
+    private readonly aiService: AiService,
+    private readonly intentService: AiIntentService,
+  ) {}
 
   @Post('conversations/:conversationId/suggest')
   @HttpCode(HttpStatus.OK)
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
   @ApiOperation({
     summary:
       'Gera sugestão de resposta via IA e persiste como FollowUp SUGGESTED (AI_REPLY). Com ASYNC_AI_ENABLED=true retorna accepted + jobId.',
@@ -50,6 +55,28 @@ export class AiController {
         userAgent: req.headers['user-agent'],
       },
     );
+  }
+
+  @Post('classify')
+  @HttpCode(HttpStatus.OK)
+  @Roles(MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.AGENT)
+  @ApiOperation({
+    summary:
+      'Fase 11A — classifica intent + regras de escalonamento (não envia WhatsApp).',
+  })
+  classify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ClassifyIntentDto,
+    @Req() req: Request,
+  ) {
+    const actor = this.asCompanyActor(user);
+    return this.intentService.classify({
+      companyId: actor.cid,
+      message: dto.message,
+      recentContext: dto.recentContext,
+      actorUserId: actor.sub,
+      meta: { ip: req.ip, userAgent: req.headers['user-agent'] },
+    });
   }
 
   private asCompanyActor(user: AuthenticatedUser) {
