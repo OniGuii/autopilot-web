@@ -1,10 +1,17 @@
 import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
+  AiAgentMode,
   FollowUpStatus,
   Prisma,
   WebhookEventStatus,
   WhatsAppConnectionStatus,
 } from '@prisma/client';
+import {
+  AI_ESCALATED,
+  AI_INTENT_CLASSIFIED,
+  AI_KB_MATCH_FOUND,
+  AI_KB_MATCH_MISSED,
+} from '../ai/ai.constants';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AsyncMetricsService } from '../async/async-metrics.service';
@@ -1129,6 +1136,8 @@ export class OpsService {
       checks.openai = await this.checkOpenAi();
     }
 
+    const aiAgent = await this.getAiAgentDiagnostics(companyId);
+
     let status: 'ok' | 'degraded' | 'error' = 'ok';
     const values = Object.values(checks).map((c) => c.status);
     if (values.includes('error')) status = 'error';
@@ -1140,8 +1149,54 @@ export class OpsService {
       status,
       scope: fullAccess ? 'full' : 'limited',
       checks,
+      aiAgent,
       generatedInMs: Date.now() - started,
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  private async getAiAgentDiagnostics(companyId: string) {
+    const [settings, kbEntriesTotal, classified, escalated, kbHits, kbMisses] =
+      await Promise.all([
+        this.prisma.companyAiSettings.findFirst({
+          where: { companyId, deletedAt: null },
+          select: { mode: true },
+        }),
+        this.prisma.knowledgeBaseEntry.count({
+          where: { companyId, deletedAt: null, active: true },
+        }),
+        this.prisma.auditLog.count({
+          where: { companyId, action: AI_INTENT_CLASSIFIED },
+        }),
+        this.prisma.auditLog.count({
+          where: { companyId, action: AI_ESCALATED },
+        }),
+        this.prisma.auditLog.count({
+          where: { companyId, action: AI_KB_MATCH_FOUND },
+        }),
+        this.prisma.auditLog.count({
+          where: { companyId, action: AI_KB_MATCH_MISSED },
+        }),
+      ]);
+
+    const mode = settings?.mode ?? AiAgentMode.ASSIST;
+    const kbLookups = kbHits + kbMisses;
+    const kbHitRate =
+      kbLookups === 0 ? null : Number((kbHits / kbLookups).toFixed(4));
+    const escalationRate =
+      classified === 0 ? null : Number((escalated / classified).toFixed(4));
+
+    return {
+      mode,
+      kbEntriesTotal,
+      kbHitRate,
+      escalationRate,
+      classifiedTotal: classified,
+      escalatedTotal: escalated,
+      kbHits,
+      kbMisses,
+      /** AUTO never sends in 11B. */
+      autoSendEnabled: false,
     };
   }
 

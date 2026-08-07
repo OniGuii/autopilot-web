@@ -20,6 +20,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { runWithRequestContextAsync } from '../../observability/request-context';
 import type { WhatsappInboundJobPayload } from '../async/async.types';
 import { WhatsappInboundProducer } from '../async/producers/whatsapp-inbound.producer';
+import { AiAssistPipelineService } from '../ai/ai-assist-pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { newCorrelationId } from './correlation';
@@ -93,6 +94,8 @@ export class WhatsappService {
     private readonly config: ConfigService,
     @Optional()
     private readonly inboundProducer?: WhatsappInboundProducer,
+    @Optional()
+    private readonly aiAssistPipeline?: AiAssistPipelineService,
   ) {
     this.webhookSlowMs = this.config.get<number>(
       'evolution.webhookSlowMs',
@@ -690,6 +693,26 @@ export class WhatsappService {
       WebhookEventStatus.PROCESSED,
       null,
     );
+
+    // Fase 11B — ASSIST pipeline (classify → KB → FollowUp SUGGESTED).
+    // Fire-and-forget: never block/fail the webhook; never auto-send WhatsApp.
+    if (this.aiAssistPipeline) {
+      void this.aiAssistPipeline
+        .handleInbound({
+          companyId,
+          conversationId: result.conversationId,
+          leadId: result.leadId,
+          messageId: result.messageId,
+          messageBody: parsed.message.body,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `ai assist pipeline failed company=${companyId} conversation=${result.conversationId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+    }
 
     return {
       ok: true,

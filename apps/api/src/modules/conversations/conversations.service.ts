@@ -7,11 +7,13 @@ import {
   Channel,
   Conversation,
   ConversationStatus,
+  FollowUpStatus,
   Message,
   MessageDirection,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AI_FOLLOWUP_TYPE } from '../ai/ai.constants';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { normalizePhone } from '../leads/utils/normalize-phone';
@@ -36,6 +38,18 @@ type LeadSummary = {
   phone: string;
 };
 
+export type AiSuggestionCard = {
+  followUpId: string;
+  suggestedBody: string | null;
+  status: FollowUpStatus;
+  intent: string | null;
+  confidence: number | null;
+  requiresHuman: boolean;
+  kbSource: string | null;
+  kbTitle: string | null;
+  createdAt: Date;
+};
+
 export type ConversationResponse = {
   id: string;
   companyId: string;
@@ -49,6 +63,8 @@ export type ConversationResponse = {
   updatedAt: Date;
   lead?: LeadSummary;
   messages?: MessageResponse[];
+  /** Latest SUGGESTED AI_REPLY for ASSIST UI (Fase 11B). */
+  aiSuggestion?: AiSuggestionCard | null;
 };
 
 export type MessageResponse = {
@@ -163,15 +179,27 @@ export class ConversationsService {
       lead: true,
     });
 
-    const messages = await this.prisma.message.findMany({
-      where: {
-        conversationId: conversation.id,
-        companyId: actor.cid,
-        deletedAt: null,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: MESSAGE_PAGE_LIMIT,
-    });
+    const [messages, aiFollowUp] = await Promise.all([
+      this.prisma.message.findMany({
+        where: {
+          conversationId: conversation.id,
+          companyId: actor.cid,
+          deletedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: MESSAGE_PAGE_LIMIT,
+      }),
+      this.prisma.followUp.findFirst({
+        where: {
+          companyId: actor.cid,
+          conversationId: conversation.id,
+          deletedAt: null,
+          type: AI_FOLLOWUP_TYPE,
+          status: FollowUpStatus.SUGGESTED,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
     // Return chronological order (oldest → newest) among the last 50
     messages.reverse();
@@ -183,6 +211,7 @@ export class ConversationsService {
         phone: conversation.lead.phone,
       },
       messages: messages.map((m) => this.toMessageResponse(m)),
+      aiSuggestion: this.toAiSuggestionCard(aiFollowUp),
     });
   }
 
@@ -271,7 +300,10 @@ export class ConversationsService {
     meta?: RequestMeta,
   ) {
     const companyId = actor.cid;
-    const conversation = await this.findActiveInCompany(companyId, conversationId);
+    const conversation = await this.findActiveInCompany(
+      companyId,
+      conversationId,
+    );
 
     let senderUserId: string | null = null;
     let senderType: string;
@@ -442,7 +474,11 @@ export class ConversationsService {
 
   private toConversationResponse(
     c: Conversation,
-    extras?: { lead?: LeadSummary; messages?: MessageResponse[] },
+    extras?: {
+      lead?: LeadSummary;
+      messages?: MessageResponse[];
+      aiSuggestion?: AiSuggestionCard | null;
+    },
   ): ConversationResponse {
     return {
       id: c.id,
@@ -457,6 +493,48 @@ export class ConversationsService {
       updatedAt: c.updatedAt,
       ...(extras?.lead ? { lead: extras.lead } : {}),
       ...(extras?.messages ? { messages: extras.messages } : {}),
+      ...(extras && 'aiSuggestion' in extras
+        ? { aiSuggestion: extras.aiSuggestion ?? null }
+        : {}),
+    };
+  }
+
+  private toAiSuggestionCard(
+    followUp: {
+      id: string;
+      suggestedBody: string | null;
+      status: FollowUpStatus;
+      metadata: Prisma.JsonValue;
+      createdAt: Date;
+    } | null,
+  ): AiSuggestionCard | null {
+    if (!followUp) return null;
+    const meta =
+      followUp.metadata &&
+      typeof followUp.metadata === 'object' &&
+      !Array.isArray(followUp.metadata)
+        ? (followUp.metadata as Record<string, unknown>)
+        : {};
+    const kb =
+      meta.kb && typeof meta.kb === 'object' && !Array.isArray(meta.kb)
+        ? (meta.kb as Record<string, unknown>)
+        : null;
+
+    return {
+      followUpId: followUp.id,
+      suggestedBody: followUp.suggestedBody,
+      status: followUp.status,
+      intent: typeof meta.intent === 'string' ? meta.intent : null,
+      confidence: typeof meta.confidence === 'number' ? meta.confidence : null,
+      requiresHuman: meta.requiresHuman === true,
+      kbSource:
+        typeof kb?.source === 'string'
+          ? kb.source
+          : typeof kb?.title === 'string'
+            ? kb.title
+            : null,
+      kbTitle: typeof kb?.title === 'string' ? kb.title : null,
+      createdAt: followUp.createdAt,
     };
   }
 

@@ -44,17 +44,15 @@ describe('KnowledgeBaseService (11A)', () => {
       },
       $transaction: jest.fn(),
     };
-    prisma.$transaction.mockImplementation(
-      async (arg: unknown) => {
-        if (typeof arg === 'function') {
-          return (arg as (tx: unknown) => Promise<unknown>)({
-            knowledgeBaseEntry: prisma.knowledgeBaseEntry,
-            auditLog: { create: jest.fn() },
-          });
-        }
-        return Promise.all(arg as Promise<unknown>[]);
-      },
-    );
+    prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === 'function') {
+        return (arg as (tx: unknown) => Promise<unknown>)({
+          knowledgeBaseEntry: prisma.knowledgeBaseEntry,
+          auditLog: { create: jest.fn() },
+        });
+      }
+      return Promise.all(arg as Promise<unknown>[]);
+    });
     service = new KnowledgeBaseService(prisma as never, audit as never);
   });
 

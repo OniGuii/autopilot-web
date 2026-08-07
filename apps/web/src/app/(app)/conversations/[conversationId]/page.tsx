@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -13,7 +14,12 @@ import {
   getConversation,
 } from "@/features/conversations/api";
 import { CONVERSATION_STATUS_LABEL } from "@/features/conversations/constants";
-import { createFollowUp } from "@/features/follow-ups/api";
+import {
+  approveFollowUp,
+  createFollowUp,
+  rejectFollowUp,
+  updateFollowUp,
+} from "@/features/follow-ups/api";
 import { getWhatsAppStatus, sendWhatsAppMessage } from "@/features/whatsapp/api";
 import { WhatsAppStatusBadge } from "@/features/whatsapp/status-badge";
 import { friendlyError } from "@/lib/errors";
@@ -82,6 +88,15 @@ export default function ConversationDetailPage() {
     defaultValues: { suggestedBody: "" },
   });
 
+  const [editingAi, setEditingAi] = useState(false);
+  const [aiDraft, setAiDraft] = useState("");
+
+  useEffect(() => {
+    const suggestion = query.data?.aiSuggestion?.suggestedBody ?? "";
+    setAiDraft(suggestion);
+    setEditingAi(false);
+  }, [query.data?.aiSuggestion?.followUpId, query.data?.aiSuggestion?.suggestedBody]);
+
   const invalidate = async () => {
     await queryClient.invalidateQueries({
       queryKey: ["conversations", conversationId],
@@ -148,6 +163,47 @@ export default function ConversationDetailPage() {
     },
   });
 
+  const approveAiMutation = useMutation({
+    mutationFn: async () => {
+      const suggestion = query.data?.aiSuggestion;
+      if (!suggestion) throw new Error("Sugestão indisponível");
+      if (editingAi && aiDraft.trim() && aiDraft !== suggestion.suggestedBody) {
+        await updateFollowUp(suggestion.followUpId, {
+          suggestedBody: aiDraft.trim(),
+        });
+      }
+      return approveFollowUp(suggestion.followUpId, {
+        scheduledAt: new Date().toISOString(),
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Sugestão da IA aprovada (agendada)");
+      setEditingAi(false);
+      await invalidate();
+    },
+    onError: (error) => {
+      toast.error(friendlyError(error, "Não foi possível aprovar a sugestão."));
+    },
+  });
+
+  const rejectAiMutation = useMutation({
+    mutationFn: () => {
+      const suggestion = query.data?.aiSuggestion;
+      if (!suggestion) throw new Error("Sugestão indisponível");
+      return rejectFollowUp(suggestion.followUpId, {
+        reason: "Rejeitado na conversa",
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Sugestão da IA rejeitada");
+      setEditingAi(false);
+      await invalidate();
+    },
+    onError: (error) => {
+      toast.error(friendlyError(error, "Não foi possível rejeitar a sugestão."));
+    },
+  });
+
   if (query.isLoading) {
     return <LoadingBlock rows={4} label="Carregando conversa…" />;
   }
@@ -174,6 +230,7 @@ export default function ConversationDetailPage() {
   const conversation = query.data;
   const messages = conversation.messages ?? [];
   const waConnected = waQuery.data?.status === "CONNECTED";
+  const aiSuggestion = conversation.aiSuggestion;
 
   return (
     <div className="space-y-6">
@@ -217,6 +274,113 @@ export default function ConversationDetailPage() {
           </div>
         }
       />
+
+      {aiSuggestion ? (
+        <Card className="border-primary/20 bg-white/90">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <CardTitle>Resposta sugerida pela IA</CardTitle>
+                <CardDescription>
+                  Humano no loop — nada é enviado automaticamente
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {aiSuggestion.intent ? (
+                  <Badge variant="secondary">{aiSuggestion.intent}</Badge>
+                ) : null}
+                {aiSuggestion.requiresHuman ? (
+                  <Badge variant="warning">Precisa humano</Badge>
+                ) : null}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <dl className="grid gap-2 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Intent</dt>
+                <dd className="font-medium">{aiSuggestion.intent ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Confiança</dt>
+                <dd className="font-medium">
+                  {aiSuggestion.confidence == null
+                    ? "—"
+                    : `${Math.round(aiSuggestion.confidence * 100)}%`}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Fonte KB</dt>
+                <dd className="font-medium break-words">
+                  {aiSuggestion.kbTitle || aiSuggestion.kbSource || "—"}
+                </dd>
+              </div>
+            </dl>
+
+            {editingAi ? (
+              <Textarea
+                value={aiDraft}
+                onChange={(e) => setAiDraft(e.target.value)}
+                rows={6}
+              />
+            ) : (
+              <p className="whitespace-pre-wrap rounded-lg border bg-muted/20 p-3 text-sm">
+                {aiSuggestion.suggestedBody}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => approveAiMutation.mutate()}
+                disabled={
+                  approveAiMutation.isPending || rejectAiMutation.isPending
+                }
+              >
+                {approveAiMutation.isPending ? "Aprovando…" : "Aprovar"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!editingAi) {
+                    setAiDraft(aiSuggestion.suggestedBody ?? "");
+                    setEditingAi(true);
+                  } else {
+                    setEditingAi(false);
+                    setAiDraft(aiSuggestion.suggestedBody ?? "");
+                  }
+                }}
+                disabled={
+                  approveAiMutation.isPending || rejectAiMutation.isPending
+                }
+              >
+                {editingAi ? "Cancelar edição" : "Editar"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Rejeitar esta sugestão da IA? Ela não será enviada.",
+                    )
+                  ) {
+                    rejectAiMutation.mutate();
+                  }
+                }}
+                disabled={
+                  approveAiMutation.isPending || rejectAiMutation.isPending
+                }
+              >
+                {rejectAiMutation.isPending ? "Rejeitando…" : "Rejeitar"}
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href={`/follow-ups/${aiSuggestion.followUpId}`}>
+                  Abrir follow-up
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
         <Card className="bg-white/90">

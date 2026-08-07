@@ -41,6 +41,16 @@ export function createFollowUp(input: CreateFollowUpInput) {
   });
 }
 
+export function updateFollowUp(
+  id: string,
+  input: { suggestedBody?: string },
+) {
+  return apiRequest<FollowUp>(endpoints.followUps.byId(id), {
+    method: "PATCH",
+    body: input,
+  });
+}
+
 export function approveFollowUp(id: string, input: ApproveFollowUpInput = {}) {
   return apiRequest<FollowUp>(endpoints.followUps.approve(id), {
     method: "POST",

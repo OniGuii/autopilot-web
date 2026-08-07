@@ -217,6 +217,18 @@ export type Message = {
   updatedAt: string;
 };
 
+export type ConversationAiSuggestion = {
+  followUpId: string;
+  suggestedBody: string | null;
+  status: FollowUpStatus;
+  intent: string | null;
+  confidence: number | null;
+  requiresHuman: boolean;
+  kbSource: string | null;
+  kbTitle: string | null;
+  createdAt: string;
+};
+
 export type Conversation = {
   id: string;
   companyId: string;
@@ -230,6 +242,7 @@ export type Conversation = {
   updatedAt: string;
   lead?: ConversationLeadSummary;
   messages?: Message[];
+  aiSuggestion?: ConversationAiSuggestion | null;
 };
 
 export type ListConversationsQuery = {
@@ -473,6 +486,18 @@ export type DiagnosticCheck = {
   detail?: string;
 };
 
+export type AiAgentDiagnostics = {
+  mode: "OFF" | "ASSIST" | "AUTO";
+  kbEntriesTotal: number;
+  kbHitRate: number | null;
+  escalationRate: number | null;
+  classifiedTotal: number;
+  escalatedTotal: number;
+  kbHits: number;
+  kbMisses: number;
+  autoSendEnabled: boolean;
+};
+
 export type DiagnosticsResponse = {
   status: "ok" | "degraded" | "error";
   scope: "full" | "limited";
@@ -483,6 +508,7 @@ export type DiagnosticsResponse = {
     workers?: DiagnosticCheck;
     openai?: DiagnosticCheck;
   };
+  aiAgent?: AiAgentDiagnostics;
   generatedInMs: number;
   timestamp: string;
 };
