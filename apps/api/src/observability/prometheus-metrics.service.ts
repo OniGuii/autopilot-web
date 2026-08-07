@@ -46,6 +46,19 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiClassificationsTotal: Counter<string>;
   readonly aiEscalationsTotal: Counter<string>;
   readonly aiKbMatchesTotal: Counter<string>;
+  /** Fase 11B — intent + assist pipeline counters (Prometheus names use `_`). */
+  readonly aiIntentCount: Counter<string>;
+  readonly aiIntentPrice: Counter<string>;
+  readonly aiIntentProduct: Counter<string>;
+  readonly aiIntentPayment: Counter<string>;
+  readonly aiIntentDelivery: Counter<string>;
+  readonly aiIntentComplaint: Counter<string>;
+  readonly aiIntentHuman: Counter<string>;
+  readonly aiIntentUnknown: Counter<string>;
+  readonly aiResponseGenerated: Counter<string>;
+  readonly aiResponseEscalated: Counter<string>;
+  readonly aiKbHit: Counter<string>;
+  readonly aiKbMiss: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -174,6 +187,66 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
     this.aiKbMatchesTotal = new Counter({
       name: 'ai_kb_matches_total',
       help: 'AI knowledge-base matches (Fase 11A)',
+      registers: [this.registry],
+    });
+    this.aiIntentCount = new Counter({
+      name: 'ai_intent_count',
+      help: 'AI intent classifications processed by assist pipeline (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentPrice = new Counter({
+      name: 'ai_intent_price',
+      help: 'AI intent PRICE (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentProduct = new Counter({
+      name: 'ai_intent_product',
+      help: 'AI intent PRODUCT (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentPayment = new Counter({
+      name: 'ai_intent_payment',
+      help: 'AI intent PAYMENT (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentDelivery = new Counter({
+      name: 'ai_intent_delivery',
+      help: 'AI intent DELIVERY (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentComplaint = new Counter({
+      name: 'ai_intent_complaint',
+      help: 'AI intent COMPLAINT (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentHuman = new Counter({
+      name: 'ai_intent_human',
+      help: 'AI intent HUMAN (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiIntentUnknown = new Counter({
+      name: 'ai_intent_unknown',
+      help: 'AI intent UNKNOWN (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiResponseGenerated = new Counter({
+      name: 'ai_response_generated',
+      help: 'AI ASSIST suggested responses generated (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiResponseEscalated = new Counter({
+      name: 'ai_response_escalated',
+      help: 'AI ASSIST responses escalated to human (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiKbHit = new Counter({
+      name: 'ai_kb_hit',
+      help: 'AI knowledge-base resolver hits (Fase 11B)',
+      registers: [this.registry],
+    });
+    this.aiKbMiss = new Counter({
+      name: 'ai_kb_miss',
+      help: 'AI knowledge-base resolver misses (Fase 11B)',
       registers: [this.registry],
     });
 
@@ -317,6 +390,49 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordAiKbMatch(): void {
     this.aiKbMatchesTotal.inc();
+  }
+
+  recordAiIntent(intent: string): void {
+    this.aiIntentCount.inc();
+    switch ((intent || 'UNKNOWN').toUpperCase()) {
+      case 'PRICE':
+        this.aiIntentPrice.inc();
+        break;
+      case 'PRODUCT':
+        this.aiIntentProduct.inc();
+        break;
+      case 'PAYMENT':
+        this.aiIntentPayment.inc();
+        break;
+      case 'DELIVERY':
+        this.aiIntentDelivery.inc();
+        break;
+      case 'COMPLAINT':
+        this.aiIntentComplaint.inc();
+        break;
+      case 'HUMAN':
+        this.aiIntentHuman.inc();
+        break;
+      default:
+        this.aiIntentUnknown.inc();
+        break;
+    }
+  }
+
+  recordAiResponseGenerated(): void {
+    this.aiResponseGenerated.inc();
+  }
+
+  recordAiResponseEscalated(): void {
+    this.aiResponseEscalated.inc();
+  }
+
+  recordAiKbHit(): void {
+    this.aiKbHit.inc();
+  }
+
+  recordAiKbMiss(): void {
+    this.aiKbMiss.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {

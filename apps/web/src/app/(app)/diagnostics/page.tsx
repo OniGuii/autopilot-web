@@ -167,6 +167,47 @@ export default function DiagnosticsPage() {
         <CheckCard name="whatsapp" check={checks.whatsapp} />
         <CheckCard name="workers" check={checks.workers} />
       </div>
+
+      {data.aiAgent ? (
+        <Card className="bg-white/90">
+          <CardHeader>
+            <CardTitle>Agente de IA</CardTitle>
+            <CardDescription>
+              Modo operacional e saúde da Knowledge Base (Fase 11B)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Modo</p>
+              <p className="font-medium">{data.aiAgent.mode}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Entradas KB ativas</p>
+              <p className="font-medium">{data.aiAgent.kbEntriesTotal}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">KB hit rate</p>
+              <p className="font-medium">
+                {data.aiAgent.kbHitRate == null
+                  ? "—"
+                  : `${Math.round(data.aiAgent.kbHitRate * 100)}%`}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Escalation rate</p>
+              <p className="font-medium">
+                {data.aiAgent.escalationRate == null
+                  ? "—"
+                  : `${Math.round(data.aiAgent.escalationRate * 100)}%`}
+              </p>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-4 text-xs text-muted-foreground">
+              Auto-send:{" "}
+              {data.aiAgent.autoSendEnabled ? "ligado" : "desligado (humano no loop)"}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { KnowledgeBaseKind, type Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -65,11 +61,7 @@ export class KnowledgeBaseService {
     return this.serialize(row);
   }
 
-  async create(
-    actor: Actor,
-    dto: CreateKnowledgeBaseEntryDto,
-    meta?: ReqMeta,
-  ) {
+  async create(actor: Actor, dto: CreateKnowledgeBaseEntryDto, meta?: ReqMeta) {
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.knowledgeBaseEntry.create({
         data: {
@@ -107,7 +99,8 @@ export class KnowledgeBaseService {
     const existing = await this.prisma.knowledgeBaseEntry.findFirst({
       where: { id, companyId: actor.cid, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Knowledge base entry not found');
+    if (!existing)
+      throw new NotFoundException('Knowledge base entry not found');
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await tx.knowledgeBaseEntry.update({
@@ -141,7 +134,8 @@ export class KnowledgeBaseService {
     const existing = await this.prisma.knowledgeBaseEntry.findFirst({
       where: { id, companyId: actor.cid, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Knowledge base entry not found');
+    if (!existing)
+      throw new NotFoundException('Knowledge base entry not found');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.knowledgeBaseEntry.update({

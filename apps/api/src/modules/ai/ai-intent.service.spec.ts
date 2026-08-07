@@ -109,6 +109,27 @@ describe('AiIntentService (11A)', () => {
       });
     });
 
+    it('escalates PRODUCT / PAYMENT / DELIVERY without KB (11B)', () => {
+      expect(service.evaluateEscalation(AiIntent.PRODUCT, false, true)).toEqual(
+        {
+          escalated: true,
+          escalationReason: 'PRODUCT_WITHOUT_KB',
+        },
+      );
+      expect(service.evaluateEscalation(AiIntent.PAYMENT, false, true)).toEqual(
+        {
+          escalated: true,
+          escalationReason: 'PAYMENT_WITHOUT_KB',
+        },
+      );
+      expect(
+        service.evaluateEscalation(AiIntent.DELIVERY, false, true),
+      ).toEqual({
+        escalated: true,
+        escalationReason: 'DELIVERY_WITHOUT_KB',
+      });
+    });
+
     it('does not escalate PRICE with KB', () => {
       const r = service.evaluateEscalation(AiIntent.PRICE, true, true);
       expect(r.escalated).toBe(false);
@@ -133,9 +154,7 @@ describe('AiIntentService (11A)', () => {
     });
 
     it('matches KB for PRICE when PRICE kind exists', async () => {
-      kb.listActiveKinds.mockResolvedValue(
-        new Set([KnowledgeBaseKind.PRICE]),
-      );
+      kb.listActiveKinds.mockResolvedValue(new Set([KnowledgeBaseKind.PRICE]));
       const result = await service.classify({
         companyId: 'c1',
         message: 'qual o preço?',

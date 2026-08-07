@@ -111,10 +111,31 @@ export class AiIntentService {
     if (intent === AiIntent.UNKNOWN) {
       return { escalated: true, escalationReason: 'UNKNOWN' };
     }
-    if (intent === AiIntent.PRICE && kbRequired && !kbMatched) {
-      return { escalated: true, escalationReason: 'PRICE_WITHOUT_KB' };
+    if (kbRequired && !kbMatched) {
+      if (intent === AiIntent.PRICE) {
+        return { escalated: true, escalationReason: 'PRICE_WITHOUT_KB' };
+      }
+      if (intent === AiIntent.PRODUCT) {
+        return { escalated: true, escalationReason: 'PRODUCT_WITHOUT_KB' };
+      }
+      if (intent === AiIntent.PAYMENT) {
+        return { escalated: true, escalationReason: 'PAYMENT_WITHOUT_KB' };
+      }
+      if (intent === AiIntent.DELIVERY) {
+        return { escalated: true, escalationReason: 'DELIVERY_WITHOUT_KB' };
+      }
     }
     return { escalated: false, escalationReason: null };
+  }
+
+  /** Intents that require KB grounding before a safe ASSIST draft. */
+  intentRequiresKb(intent: AiIntent): boolean {
+    return (
+      intent === AiIntent.PRICE ||
+      intent === AiIntent.PRODUCT ||
+      intent === AiIntent.PAYMENT ||
+      intent === AiIntent.DELIVERY
+    );
   }
 
   /** Deterministic PT-BR keyword classifier (11A — no OpenAI dependency). */

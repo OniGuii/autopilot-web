@@ -37,9 +37,20 @@ export const AI_KB_CREATED = 'AI_KB_CREATED';
 export const AI_KB_UPDATED = 'AI_KB_UPDATED';
 export const AI_KB_DELETED = 'AI_KB_DELETED';
 
+/** Fase 11B — assist pipeline audit actions. */
+export const AI_RESPONSE_GENERATED = 'AI_RESPONSE_GENERATED';
+export const AI_KB_MATCH_FOUND = 'AI_KB_MATCH_FOUND';
+export const AI_KB_MATCH_MISSED = 'AI_KB_MATCH_MISSED';
+
 export const AI_KB_BODY_MAX = 8000;
 export const AI_KB_TITLE_MAX = 200;
 export const AI_KB_PROMPT_BUDGET_CHARS = 8000;
+
+/** Deterministic KB-grounded reply template (no OpenAI / no auto-send). */
+export const AI_ASSIST_PROMPT_VERSION = 'assist-kb.v1';
+export const AI_ASSIST_MODEL = 'kb-template';
+export const AI_ASSIST_PIPELINE = 'assist-11b';
+export const AI_ASSIST_METADATA_MARKER = 'assist-11b' as const;
 
 export function isAiFollowUpMetadata(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
