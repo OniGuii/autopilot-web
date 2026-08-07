@@ -1,17 +1,21 @@
 import { cn } from "@/lib/utils";
 
+/** Brand mark — always sized via HTML attrs so it cannot expand if CSS fails to load. */
 export function BrandMark({ className }: { className?: string }) {
   return (
     <svg
+      xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 32 32"
+      width="32"
+      height="32"
       className={cn("h-8 w-8 shrink-0", className)}
       aria-hidden
     >
-      <rect width="32" height="32" rx="8" fill="currentColor" className="text-primary" />
+      <rect width="32" height="32" rx="8" fill="#0F5C4C" />
       <path
         d="M8 22 L16 8 L24 22"
         fill="none"
-        stroke="white"
+        stroke="#E8F5F0"
         strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -19,7 +23,7 @@ export function BrandMark({ className }: { className?: string }) {
       <path
         d="M11.5 16.5 H20.5"
         fill="none"
-        stroke="#A8D9C4"
+        stroke="#7BC4A8"
         strokeWidth="2"
         strokeLinecap="round"
       />
