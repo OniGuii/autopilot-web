@@ -10,6 +10,8 @@ export type NavItemId =
   | "team"
   | "users"
   | "settings"
+  | "ai-settings"
+  | "ai-knowledge-base"
   | "exports"
   | "diagnostics"
   | "setup";

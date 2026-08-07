@@ -580,3 +580,65 @@ export type TimelineResponse = {
     totalPages: number;
   };
 };
+
+/** Fase 11A */
+export type AiAgentMode = "OFF" | "ASSIST" | "AUTO";
+
+export type KnowledgeBaseKind =
+  | "FAQ"
+  | "PRODUCT"
+  | "PRICE"
+  | "PAYMENT"
+  | "DELIVERY"
+  | "HOURS"
+  | "ADDRESS";
+
+export type AiIntent =
+  | "PRICE"
+  | "PRODUCT"
+  | "PAYMENT"
+  | "DELIVERY"
+  | "COMPLAINT"
+  | "HUMAN"
+  | "UNKNOWN";
+
+export type CompanyAiSettings = {
+  id: string;
+  companyId: string;
+  mode: AiAgentMode;
+  autoEnabled: boolean;
+  maxAutoRepliesPerLeadDay: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeBaseEntry = {
+  id: string;
+  companyId: string;
+  kind: KnowledgeBaseKind;
+  title: string;
+  body: string;
+  tags: string[];
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeBaseListResponse = {
+  items: KnowledgeBaseEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AiClassifyResponse = {
+  intent: AiIntent;
+  confidence: number;
+  escalated: boolean;
+  escalationReason: string | null;
+  kbMatched: boolean;
+  matchedKinds: KnowledgeBaseKind[];
+  rationale: string;
+};

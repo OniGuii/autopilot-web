@@ -22,6 +22,8 @@ export const TENANT_SCOPED_MODELS = [
   'leadNote',
   'leadActivity',
   'leadStatusTransition',
+  'companyAiSettings',
+  'knowledgeBaseEntry',
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];

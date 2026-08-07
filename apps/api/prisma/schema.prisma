@@ -112,6 +112,35 @@ enum CompanyCurrency {
   EUR
 }
 
+/// Fase 11A — AI Sales Agent mode (AUTO stored but unused until 11C).
+enum AiAgentMode {
+  OFF
+  ASSIST
+  AUTO
+}
+
+/// Fase 11A — Knowledge Base entry kinds.
+enum KnowledgeBaseKind {
+  FAQ
+  PRODUCT
+  PRICE
+  PAYMENT
+  DELIVERY
+  HOURS
+  ADDRESS
+}
+
+/// Fase 11A — Intent classifier labels.
+enum AiIntent {
+  PRICE
+  PRODUCT
+  PAYMENT
+  DELIVERY
+  COMPLAINT
+  HUMAN
+  UNKNOWN
+}
+
 // =============================================================================
 // Models
 // =============================================================================
@@ -145,6 +174,8 @@ model Company {
   leadNotes             LeadNote[]
   leadActivities        LeadActivity[]
   leadStatusTransitions LeadStatusTransition[]
+  aiSettings            CompanyAiSettings?
+  knowledgeBaseEntries  KnowledgeBaseEntry[]
 
   @@index([status])
   @@index([slug])
@@ -566,4 +597,42 @@ model WebhookEvent {
   @@index([instanceId, receivedAt])
   @@index([companyId, externalEventId])
   @@map("webhook_events")
+}
+
+/// Fase 11A — per-company AI agent settings (1:1).
+model CompanyAiSettings {
+  id                      String      @id @default(uuid()) @db.Uuid
+  companyId               String      @unique @map("company_id") @db.Uuid
+  mode                    AiAgentMode @default(ASSIST)
+  /// Reserved for 11C AUTO; stored now, not enforced yet.
+  maxAutoRepliesPerLeadDay Int        @default(3) @map("max_auto_replies_per_lead_day")
+  createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt               DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("company_ai_settings")
+}
+
+/// Fase 11A — tenant Knowledge Base entries for grounding.
+model KnowledgeBaseEntry {
+  id        String             @id @default(uuid()) @db.Uuid
+  companyId String             @map("company_id") @db.Uuid
+  kind      KnowledgeBaseKind
+  title     String             @db.VarChar(200)
+  body      String             @db.VarChar(8000)
+  tags      String[]           @default([])
+  active    Boolean            @default(true)
+  sortOrder Int                @default(0) @map("sort_order")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, kind])
+  @@index([companyId, active])
+  @@index([companyId, sortOrder])
+  @@map("knowledge_base_entries")
 }

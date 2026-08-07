@@ -79,4 +79,13 @@ export const endpoints = {
     activities: "/api/exports/activities",
     followups: "/api/exports/followups",
   },
+  ai: {
+    settings: "/api/ai/settings",
+    classify: "/api/ai/classify",
+  },
+  knowledgeBase: {
+    list: "/api/knowledge-base",
+    create: "/api/knowledge-base",
+    byId: (id: string) => `/api/knowledge-base/${id}`,
+  },
 } as const;
