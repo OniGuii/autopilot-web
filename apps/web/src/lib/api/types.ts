@@ -655,6 +655,48 @@ export type AiDashboardResponse = {
   };
 };
 
+export type RecoveryPreset = {
+  key: string;
+  label: string;
+  delayHours: number;
+};
+
+export type CompanyRecoverySettings = {
+  id: string;
+  companyId: string;
+  enabled: boolean;
+  maxAttempts: number;
+  cooldownHours: number;
+  stopOnReply: boolean;
+  stopOnHumanTakeover: boolean;
+  cadenceHours: number[];
+  allowedHoursStart: number | null;
+  allowedHoursEnd: number | null;
+  presets: RecoveryPreset[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AiRecoveryDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  policy: {
+    enabled: boolean;
+    maxAttempts: number;
+    cooldownHours: number;
+    cadenceHours: number[];
+  };
+  metrics: {
+    leadsInRecovery: number;
+    attempts: number;
+    recovered: number;
+    converted: number;
+    stopped: number;
+    conversionRate: number | null;
+    revenueRecovery: number;
+  };
+};
+
 export type KnowledgeBaseEntry = {
   id: string;
   companyId: string;

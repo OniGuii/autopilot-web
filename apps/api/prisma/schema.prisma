@@ -178,6 +178,7 @@ model Company {
   leadStatusTransitions LeadStatusTransition[]
   aiSettings            CompanyAiSettings?
   knowledgeBaseEntries  KnowledgeBaseEntry[]
+  recoverySettings      CompanyRecoverySettings?
 
   @@index([status])
   @@index([slug])
@@ -639,4 +640,28 @@ model KnowledgeBaseEntry {
   @@index([companyId, active])
   @@index([companyId, sortOrder])
   @@map("knowledge_base_entries")
+}
+
+/// Fase 11D — per-company Recovery Engine policy (1:1).
+model CompanyRecoverySettings {
+  id                   String   @id @default(uuid()) @db.Uuid
+  companyId            String   @unique @map("company_id") @db.Uuid
+  enabled              Boolean  @default(false)
+  maxAttempts          Int      @default(3) @map("max_attempts")
+  /// Minimum hours between recovery attempts (anti-spam).
+  cooldownHours        Int      @default(24) @map("cooldown_hours")
+  stopOnReply          Boolean  @default(true) @map("stop_on_reply")
+  stopOnHumanTakeover  Boolean  @default(true) @map("stop_on_human_takeover")
+  /// Hours from campaign anchor for R1/R2/R3 (default 24 / 72 / 168).
+  cadenceHours         Int[]    @default([24, 72, 168]) @map("cadence_hours")
+  /// Local hour window [start, end) in company timezone; null = any time.
+  allowedHoursStart    Int?     @map("allowed_hours_start")
+  allowedHoursEnd      Int?     @map("allowed_hours_end")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("company_recovery_settings")
 }

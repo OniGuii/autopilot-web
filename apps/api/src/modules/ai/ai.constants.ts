@@ -46,6 +46,33 @@ export const AI_KB_MATCH_MISSED = 'AI_KB_MATCH_MISSED';
 export const AI_AUTO_SENT = 'AI_AUTO_SENT';
 export const AI_AUTO_SKIPPED = 'AI_AUTO_SKIPPED';
 
+/** Fase 11D — Recovery Engine. */
+export const AI_RECOVERY_FOLLOWUP_TYPE = 'AI_RECOVERY' as const;
+export const AI_RECOVERY_MESSAGE_SOURCE = 'ai_recovery' as const;
+export const AI_RECOVERY_PIPELINE = 'recovery-11d';
+export const AI_RECOVERY_PROMPT_VERSION = 'recovery-kb.v1';
+
+export const AI_RECOVERY_CREATED = 'AI_RECOVERY_CREATED';
+export const AI_RECOVERY_SENT = 'AI_RECOVERY_SENT';
+export const AI_RECOVERY_STOPPED = 'AI_RECOVERY_STOPPED';
+export const AI_RECOVERY_CONVERTED = 'AI_RECOVERY_CONVERTED';
+
+/** Presets R1/R2/R3 — hours from campaign anchor. */
+export const AI_RECOVERY_PRESETS = {
+  R1: { key: 'R1', label: 'R1 · D+1', delayHours: 24 },
+  R2: { key: 'R2', label: 'R2 · D+3', delayHours: 72 },
+  R3: { key: 'R3', label: 'R3 · D+7', delayHours: 168 },
+} as const;
+
+export const AI_RECOVERY_DEFAULT_CADENCE_HOURS = [24, 72, 168] as const;
+export const AI_RECOVERY_DEFAULT_MAX_ATTEMPTS = 3;
+export const AI_RECOVERY_DEFAULT_COOLDOWN_HOURS = 24;
+export const AI_RECOVERY_SCAN_LOCK_KEY = 'autopilot:recovery:scan';
+export const AI_RECOVERY_SCAN_INTERVAL_MS = 60_000;
+export const AI_RECOVERY_SCAN_BATCH = 40;
+export const AI_RECOVERY_COMPANY_RATE_KEY_PREFIX = 'autopilot:ai:recovery-rate:';
+export const AI_RECOVERY_MAX_PER_COMPANY_PER_MINUTE = 10;
+
 export const AI_KB_BODY_MAX = 8000;
 export const AI_KB_TITLE_MAX = 200;
 export const AI_KB_PROMPT_BUDGET_CHARS = 8000;

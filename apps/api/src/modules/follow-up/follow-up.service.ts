@@ -5,6 +5,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   Channel,
@@ -25,10 +26,13 @@ import { RejectFollowUpDto } from './dto/reject-follow-up.dto';
 import { RescheduleFollowUpDto } from './dto/reschedule-follow-up.dto';
 import { UpdateFollowUpDto } from './dto/update-follow-up.dto';
 import {
+  AI_RECOVERY_FOLLOWUP_TYPE,
+  AI_RECOVERY_MESSAGE_SOURCE,
   AI_SUGGESTION_APPROVED,
   AI_SUGGESTION_REJECTED,
   isAiFollowUpMetadata,
 } from '../ai/ai.constants';
+import { AiRecoveryService } from '../ai/ai-recovery.service';
 import { newCorrelationId } from '../whatsapp/correlation';
 import {
   FOLLOWUP_EXECUTING_TIMEOUT_MS,
@@ -103,6 +107,7 @@ export class FollowUpService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly whatsappSend: WhatsappSendService,
+    @Optional() private readonly aiRecovery?: AiRecoveryService,
   ) {}
 
   async create(
@@ -594,6 +599,32 @@ export class FollowUpService {
       };
     }
 
+    // 11D — Recovery: re-check stop conditions + regenerate body before send.
+    if (
+      existing.type === AI_RECOVERY_FOLLOWUP_TYPE &&
+      this.aiRecovery
+    ) {
+      const prep = await this.aiRecovery.prepareExecution({
+        companyId,
+        followUpId,
+      });
+      if (!prep.ok) {
+        return {
+          outcome: 'skipped_terminal',
+          status: FollowUpStatus.CANCELLED,
+          correlationId,
+        };
+      }
+      existing = await this.findActiveInCompany(companyId, followUpId);
+      if (existing.status !== FollowUpStatus.SCHEDULED) {
+        return {
+          outcome: 'skipped_terminal',
+          status: existing.status,
+          correlationId,
+        };
+      }
+    }
+
     const actor = await this.resolveSchedulerActor(companyId, existing);
 
     try {
@@ -603,6 +634,18 @@ export class FollowUpService {
         meta: undefined,
         correlationIdOverride: correlationId,
       });
+      if (
+        existing.type === AI_RECOVERY_FOLLOWUP_TYPE &&
+        this.aiRecovery &&
+        result.id
+      ) {
+        await this.aiRecovery.afterSent({
+          companyId,
+          followUpId,
+          messageId: result.resultMessageId ?? result.id,
+          correlationId: result.metadata?.correlationId ?? correlationId,
+        });
+      }
       return {
         outcome: 'executed',
         status: FollowUpStatus.EXECUTED,
@@ -801,6 +844,11 @@ export class FollowUpService {
 
     try {
       // P4-D1/D3/D5 — Message created only by Outbound Engine
+      const messageSource =
+        existing.type === AI_RECOVERY_FOLLOWUP_TYPE
+          ? AI_RECOVERY_MESSAGE_SOURCE
+          : FOLLOWUP_MESSAGE_SOURCE;
+
       const sent = await this.whatsappSend.send(
         actor,
         {
@@ -808,7 +856,7 @@ export class FollowUpService {
           conversationId: existing.conversationId,
           body: existing.suggestedBody,
           metadata: {
-            source: FOLLOWUP_MESSAGE_SOURCE,
+            source: messageSource,
             followUpId: existing.id,
             attempt,
             correlationId,

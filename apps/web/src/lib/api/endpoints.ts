@@ -83,6 +83,8 @@ export const endpoints = {
     settings: "/api/ai/settings",
     dashboard: "/api/ai/dashboard",
     classify: "/api/ai/classify",
+    recoverySettings: "/api/ai/recovery/settings",
+    recoveryDashboard: "/api/ai/recovery/dashboard",
   },
   knowledgeBase: {
     list: "/api/knowledge-base",
