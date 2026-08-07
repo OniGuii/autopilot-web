@@ -75,6 +75,9 @@ function AiSettingsContent() {
             <Button asChild variant="outline">
               <Link href="/ai/knowledge-base">Base de conhecimento</Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link href="/ai/recovery">Recovery</Link>
+            </Button>
           </div>
         }
       />

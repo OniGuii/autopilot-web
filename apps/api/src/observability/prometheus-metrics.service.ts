@@ -63,6 +63,12 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiKbMiss: Counter<string>;
   readonly aiAutoSent: Counter<string>;
   readonly aiAutoSkipped: Counter<string>;
+  /** Fase 11D — Recovery Engine. */
+  readonly aiRecoveryActive: Gauge<string>;
+  readonly aiRecoverySent: Counter<string>;
+  readonly aiRecoveryStopped: Counter<string>;
+  readonly aiRecoveryConverted: Counter<string>;
+  readonly aiRecoveryConversionRate: Gauge<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -273,6 +279,31 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       help: 'AI AUTO sends skipped / degraded (Fase 11C)',
       registers: [this.registry],
     });
+    this.aiRecoveryActive = new Gauge({
+      name: 'ai_recovery_active',
+      help: 'AI Recovery FollowUps currently SCHEDULED/EXECUTING (Fase 11D)',
+      registers: [this.registry],
+    });
+    this.aiRecoverySent = new Counter({
+      name: 'ai_recovery_sent',
+      help: 'AI Recovery messages sent (Fase 11D)',
+      registers: [this.registry],
+    });
+    this.aiRecoveryStopped = new Counter({
+      name: 'ai_recovery_stopped',
+      help: 'AI Recovery flows stopped (Fase 11D)',
+      registers: [this.registry],
+    });
+    this.aiRecoveryConverted = new Counter({
+      name: 'ai_recovery_converted',
+      help: 'Leads converted after AI Recovery (Fase 11D)',
+      registers: [this.registry],
+    });
+    this.aiRecoveryConversionRate = new Gauge({
+      name: 'ai_recovery_conversion_rate',
+      help: 'AI Recovery conversion rate (converted / touched) (Fase 11D)',
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -471,6 +502,30 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordAiAutoSkipped(): void {
     this.aiAutoSkipped.inc();
+  }
+
+  recordAiRecoveryActiveDelta(delta: number): void {
+    if (delta !== 0) this.aiRecoveryActive.inc(delta);
+  }
+
+  recordAiRecoverySent(): void {
+    this.aiRecoverySent.inc();
+  }
+
+  recordAiRecoveryStopped(n = 1): void {
+    if (n > 0) this.aiRecoveryStopped.inc(n);
+  }
+
+  recordAiRecoveryConverted(): void {
+    this.aiRecoveryConverted.inc();
+  }
+
+  setAiRecoveryConversionRate(rate: number | null): void {
+    if (rate == null || Number.isNaN(rate)) {
+      this.aiRecoveryConversionRate.set(0);
+      return;
+    }
+    this.aiRecoveryConversionRate.set(rate);
   }
 
   recordWhatsappSend(ok: boolean): void {

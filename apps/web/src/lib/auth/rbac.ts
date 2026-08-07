@@ -13,6 +13,7 @@ export type NavItemId =
   | "ai-settings"
   | "ai-dashboard"
   | "ai-knowledge-base"
+  | "ai-recovery"
   | "exports"
   | "diagnostics"
   | "setup";

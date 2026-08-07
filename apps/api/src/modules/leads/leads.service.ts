@@ -2,10 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Lead, LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AiRecoveryService } from '../ai/ai-recovery.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { AssignLeadDto } from './dto/assign-lead.dto';
@@ -50,9 +53,12 @@ export type BulkAssignResult = {
 
 @Injectable()
 export class LeadsService {
+  private readonly logger = new Logger(LeadsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() private readonly aiRecovery?: AiRecoveryService,
   ) {}
 
   async create(actor: CompanyActor, dto: CreateLeadDto, meta?: RequestMeta) {
@@ -222,6 +228,28 @@ export class LeadsService {
           });
         }
         return this.toResponse(lead);
+      }).then((lead) => {
+        if (
+          statusChanged &&
+          this.aiRecovery &&
+          (lead.status === LeadStatus.CONVERTED ||
+            lead.status === LeadStatus.LOST)
+        ) {
+          void this.aiRecovery
+            .stopOnLeadTerminal({
+              companyId,
+              leadId: lead.id,
+              status: lead.status,
+            })
+            .catch((err) => {
+              this.logger.warn(
+                `ai recovery stop-on-terminal failed lead=${lead.id}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+        }
+        return lead;
       });
     } catch (error) {
       this.rethrowUniquePhone(error);

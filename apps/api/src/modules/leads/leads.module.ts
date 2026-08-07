@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { LeadActivitiesController } from './lead-activities.controller';
@@ -10,7 +11,7 @@ import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 
 @Module({
-  imports: [AuthModule, AuditModule],
+  imports: [AuthModule, AuditModule, forwardRef(() => AiModule)],
   controllers: [
     LeadsController,
     LeadNotesController,

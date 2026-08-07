@@ -31,6 +31,7 @@ import {
 } from './ai.constants';
 import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiIntentService } from './ai-intent.service';
+import { AiRecoveryService } from './ai-recovery.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 
 export type AssistInboundInput = {
@@ -91,6 +92,7 @@ export class AiAssistPipelineService {
     private readonly guardrails: AiAutoGuardrailsService,
     @Optional() private readonly whatsappSend?: WhatsappSendService,
     @Optional() private readonly prom?: PrometheusMetricsService,
+    @Optional() private readonly aiRecovery?: AiRecoveryService,
   ) {}
 
   /**
@@ -345,6 +347,21 @@ export class AiAssistPipelineService {
         },
       });
     });
+
+    if (pauseAgent && this.aiRecovery) {
+      void this.aiRecovery
+        .stopOnHumanTakeover({
+          companyId: input.companyId,
+          leadId: input.leadId,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `ai recovery stop-on-takeover failed company=${input.companyId} lead=${input.leadId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+    }
 
     this.prom?.recordAiResponseGenerated();
 

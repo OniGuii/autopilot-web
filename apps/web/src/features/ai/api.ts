@@ -4,7 +4,9 @@ import type {
   AiAgentMode,
   AiClassifyResponse,
   AiDashboardResponse,
+  AiRecoveryDashboardResponse,
   CompanyAiSettings,
+  CompanyRecoverySettings,
   KnowledgeBaseEntry,
   KnowledgeBaseKind,
   KnowledgeBaseListResponse,
@@ -90,5 +92,33 @@ export function deleteKnowledgeBaseEntry(id: string) {
   return apiRequest<{ id: string; deleted: boolean }>(
     endpoints.knowledgeBase.byId(id),
     { method: "DELETE" },
+  );
+}
+
+export function fetchRecoverySettings() {
+  return apiRequest<CompanyRecoverySettings>(endpoints.ai.recoverySettings);
+}
+
+export function updateRecoverySettings(
+  input: Partial<{
+    enabled: boolean;
+    maxAttempts: number;
+    cooldownHours: number;
+    stopOnReply: boolean;
+    stopOnHumanTakeover: boolean;
+    cadenceHours: number[];
+    allowedHoursStart: number | null;
+    allowedHoursEnd: number | null;
+  }>,
+) {
+  return apiRequest<CompanyRecoverySettings>(endpoints.ai.recoverySettings, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function fetchRecoveryDashboard() {
+  return apiRequest<AiRecoveryDashboardResponse>(
+    endpoints.ai.recoveryDashboard,
   );
 }

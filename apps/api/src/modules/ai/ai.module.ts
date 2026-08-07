@@ -8,6 +8,12 @@ import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiController } from './ai.controller';
 import { AiDashboardService } from './ai-dashboard.service';
 import { AiIntentService } from './ai-intent.service';
+import { AiRecoveryController } from './ai-recovery.controller';
+import { AiRecoveryDashboardService } from './ai-recovery-dashboard.service';
+import { AiRecoveryMessageService } from './ai-recovery-message.service';
+import { AiRecoveryScanner } from './ai-recovery.scanner';
+import { AiRecoveryService } from './ai-recovery.service';
+import { AiRecoverySettingsService } from './ai-recovery-settings.service';
 import { AiService } from './ai.service';
 import { AiSettingsController } from './ai-settings.controller';
 import { AiSettingsService } from './ai-settings.service';
@@ -23,7 +29,12 @@ import { OpenAiClient } from './openai.client';
     QueueModule,
     forwardRef(() => WhatsappModule),
   ],
-  controllers: [AiController, AiSettingsController, KnowledgeBaseController],
+  controllers: [
+    AiController,
+    AiSettingsController,
+    KnowledgeBaseController,
+    AiRecoveryController,
+  ],
   providers: [
     AiService,
     OpenAiClient,
@@ -34,6 +45,11 @@ import { OpenAiClient } from './openai.client';
     AiAutoGuardrailsService,
     AiAssistPipelineService,
     AiDashboardService,
+    AiRecoverySettingsService,
+    AiRecoveryMessageService,
+    AiRecoveryService,
+    AiRecoveryDashboardService,
+    AiRecoveryScanner,
   ],
   exports: [
     AiService,
@@ -43,6 +59,8 @@ import { OpenAiClient } from './openai.client';
     AiSettingsService,
     AiAssistPipelineService,
     AiDashboardService,
+    AiRecoveryService,
+    AiRecoverySettingsService,
   ],
 })
 export class AiModule {}
