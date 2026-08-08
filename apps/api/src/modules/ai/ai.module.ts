@@ -21,6 +21,9 @@ import { KnowledgeBaseController } from './knowledge-base.controller';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { OpenAiClient } from './openai.client';
+import { SalesMemoryController } from './sales-memory.controller';
+import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
+import { SalesMemoryService } from './sales-memory.service';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { OpenAiClient } from './openai.client';
     AiSettingsController,
     KnowledgeBaseController,
     AiRecoveryController,
+    SalesMemoryController,
   ],
   providers: [
     AiService,
@@ -50,6 +54,8 @@ import { OpenAiClient } from './openai.client';
     AiRecoveryService,
     AiRecoveryDashboardService,
     AiRecoveryScanner,
+    SalesMemoryExtractorService,
+    SalesMemoryService,
   ],
   exports: [
     AiService,
@@ -61,6 +67,7 @@ import { OpenAiClient } from './openai.client';
     AiDashboardService,
     AiRecoveryService,
     AiRecoverySettingsService,
+    SalesMemoryService,
   ],
 })
 export class AiModule {}

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AiIntent, MessageDirection } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -6,6 +6,7 @@ import {
   AI_SUGGESTION_MAX_CHARS,
 } from './ai.constants';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
+import { SalesMemoryService } from './sales-memory.service';
 
 export type RecoveryMessageInput = {
   companyId: string;
@@ -25,6 +26,7 @@ export class AiRecoveryMessageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kbResolver: KnowledgeBaseResolver,
+    @Optional() private readonly salesMemory?: SalesMemoryService,
   ) {}
 
   async generate(input: RecoveryMessageInput): Promise<{
@@ -47,7 +49,23 @@ export class AiRecoveryMessageService {
     const lastInbound = messages.find(
       (m) => m.direction === MessageDirection.INBOUND && m.body?.trim(),
     );
+
+    // 11E.1 — continue sales context; never restart as cold first-touch.
+    let memorySummary: string | null = null;
+    if (this.salesMemory) {
+      try {
+        const memory = await this.salesMemory.loadMemory(
+          input.companyId,
+          input.conversationId,
+        );
+        memorySummary = this.salesMemory.formatForPrompt(memory);
+      } catch {
+        memorySummary = null;
+      }
+    }
+
     const seed =
+      memorySummary ||
       lastInbound?.body?.trim() ||
       this.intentSeedQuery(intent) ||
       'acompanhamento comercial';
@@ -73,7 +91,10 @@ export class AiRecoveryMessageService {
     const parts = [
       `Olá${input.leadName?.trim() ? `, ${name}` : ''}!`,
       angle,
-      contextHint
+      memorySummary
+        ? `Retomando do que já combinamos: ${memorySummary}.`
+        : null,
+      contextHint && !memorySummary
         ? `Vi que você comentou: "${contextHint}".`
         : null,
       kbBlock

@@ -408,6 +408,8 @@ model Conversation {
   assignedUserId   String?            @map("assigned_user_id") @db.Uuid
   /// Fase 11C — when true, AUTO must not send until human resumes.
   agentPaused      Boolean            @default(false) @map("agent_paused")
+  /// Fase 11E.1 — opaque JSON; Sales Memory lives under key `salesMemory`.
+  metadata         Json?
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?          @map("deleted_at") @db.Timestamptz(6)
