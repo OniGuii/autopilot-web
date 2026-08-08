@@ -70,8 +70,20 @@ export const AI_RECOVERY_DEFAULT_COOLDOWN_HOURS = 24;
 export const AI_RECOVERY_SCAN_LOCK_KEY = 'autopilot:recovery:scan';
 export const AI_RECOVERY_SCAN_INTERVAL_MS = 60_000;
 export const AI_RECOVERY_SCAN_BATCH = 40;
-export const AI_RECOVERY_COMPANY_RATE_KEY_PREFIX = 'autopilot:ai:recovery-rate:';
+export const AI_RECOVERY_COMPANY_RATE_KEY_PREFIX =
+  'autopilot:ai:recovery-rate:';
 export const AI_RECOVERY_MAX_PER_COMPANY_PER_MINUTE = 10;
+
+/** Fase 11E.1 — Sales Memory (Conversation.metadata.salesMemory). */
+export const SALES_MEMORY_KEY = 'salesMemory' as const;
+export const SALES_MEMORY_CREATED = 'SALES_MEMORY_CREATED';
+export const SALES_MEMORY_UPDATED = 'SALES_MEMORY_UPDATED';
+export const SALES_MEMORY_CLEARED = 'SALES_MEMORY_CLEARED';
+export const SALES_MEMORY_SOURCE_MESSAGE_IDS_MAX = 20;
+export const SALES_MEMORY_PRODUCT_INTEREST_MAX = 8;
+export const SALES_MEMORY_BUDGET_MAX_CHARS = 80;
+export const SALES_MEMORY_CITY_MAX_CHARS = 80;
+export const SALES_MEMORY_SLOT_MAX_CHARS = 80;
 
 export const AI_KB_BODY_MAX = 8000;
 export const AI_KB_TITLE_MAX = 200;

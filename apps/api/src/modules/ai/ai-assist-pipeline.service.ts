@@ -33,6 +33,7 @@ import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
 import { AiIntentService } from './ai-intent.service';
 import { AiRecoveryService } from './ai-recovery.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
+import { SalesMemoryService } from './sales-memory.service';
 
 export type AssistInboundInput = {
   companyId: string;
@@ -93,6 +94,7 @@ export class AiAssistPipelineService {
     @Optional() private readonly whatsappSend?: WhatsappSendService,
     @Optional() private readonly prom?: PrometheusMetricsService,
     @Optional() private readonly aiRecovery?: AiRecoveryService,
+    @Optional() private readonly salesMemory?: SalesMemoryService,
   ) {}
 
   /**
@@ -166,6 +168,25 @@ export class AiAssistPipelineService {
       message,
       audit: false,
     });
+
+    // 11E.1 — Sales Memory update (best-effort; never changes ASSIST/AUTO path).
+    if (this.salesMemory) {
+      try {
+        await this.salesMemory.updateFromInbound({
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          messageBody: message,
+          intent: classification.intent,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `sales memory update failed company=${input.companyId} conversation=${input.conversationId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
 
     const kb = await this.kbResolver.resolve({
       companyId: input.companyId,

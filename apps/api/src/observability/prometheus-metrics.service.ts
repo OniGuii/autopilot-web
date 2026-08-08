@@ -69,6 +69,10 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly aiRecoveryStopped: Counter<string>;
   readonly aiRecoveryConverted: Counter<string>;
   readonly aiRecoveryConversionRate: Gauge<string>;
+  /** Fase 11E.1 — Sales Memory. */
+  readonly salesMemoryUpdatesTotal: Counter<string>;
+  readonly salesMemoryFieldsDetectedTotal: Counter<string>;
+  readonly salesMemoryConflictsTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -304,6 +308,22 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       help: 'AI Recovery conversion rate (converted / touched) (Fase 11D)',
       registers: [this.registry],
     });
+    this.salesMemoryUpdatesTotal = new Counter({
+      name: 'sales_memory_updates_total',
+      help: 'Sales Memory create/update/clear operations (Fase 11E.1)',
+      registers: [this.registry],
+    });
+    this.salesMemoryFieldsDetectedTotal = new Counter({
+      name: 'sales_memory_fields_detected_total',
+      help: 'Sales Memory fields detected by rule extractor (Fase 11E.1)',
+      labelNames: ['field'],
+      registers: [this.registry],
+    });
+    this.salesMemoryConflictsTotal = new Counter({
+      name: 'sales_memory_conflicts_total',
+      help: 'Sales Memory slot conflicts on merge (Fase 11E.1)',
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -526,6 +546,18 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     this.aiRecoveryConversionRate.set(rate);
+  }
+
+  recordSalesMemoryUpdate(): void {
+    this.salesMemoryUpdatesTotal.inc();
+  }
+
+  recordSalesMemoryFieldDetected(field: string): void {
+    this.salesMemoryFieldsDetectedTotal.inc({ field: field || 'unknown' });
+  }
+
+  recordSalesMemoryConflicts(n = 1): void {
+    if (n > 0) this.salesMemoryConflictsTotal.inc(n);
   }
 
   recordWhatsappSend(ok: boolean): void {
