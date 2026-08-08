@@ -96,6 +96,29 @@ export const LEAD_SCORE_COLD_MAX = 39;
 export const LEAD_SCORE_WARM_MAX = 69;
 /** HOT = 70–100 */
 
+/** Fase 11E.3 — Objection Engine. */
+export const OBJECTION_DETECTED = 'OBJECTION_DETECTED';
+export const OBJECTION_HANDLED = 'OBJECTION_HANDLED';
+export const OBJECTION_ESCALATED = 'OBJECTION_ESCALATED';
+export const OBJECTION_HISTORY_MAX = 20;
+/** Same type repeated ≥ this many times → escalate. */
+export const OBJECTION_REPEAT_THRESHOLD = 2;
+/** HOT lead with this many total objections and no purchase advance → escalate. */
+export const OBJECTION_HOT_STALL_THRESHOLD = 2;
+export const OBJECTION_PIPELINE = 'objection-11e3';
+export const OBJECTION_PROMPT_VERSION = 'objection-kb.v1';
+/** AUTO allowed only for these types (plus WARM/HOT temperature). */
+export const OBJECTION_AUTO_TYPES = ['PRICE', 'TIME', 'TRUST'] as const;
+export const OBJECTION_TYPES = [
+  'PRICE',
+  'TIME',
+  'TRUST',
+  'COMPARISON',
+  'AUTHORITY',
+  'NEED',
+  'UNKNOWN',
+] as const;
+
 /**
  * Score weights (documented for 11E.2).
  * Positive signals add; negative subtract; final clamp 0–100.

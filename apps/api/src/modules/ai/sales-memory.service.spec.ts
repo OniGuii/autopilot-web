@@ -189,13 +189,13 @@ describe('SalesMemoryService (11E.1)', () => {
       patch: {
         city: 'Curitiba',
         productInterest: ['Plano Pro'],
-        lastObjection: 'CARO',
+        lastObjection: 'PRICE',
       },
     });
     const mem = await service.loadMemory('c1', 'conv-1');
     const text = service.formatForPrompt(mem);
     expect(text).toMatch(/Curitiba/);
     expect(text).toMatch(/Plano Pro/);
-    expect(text).toMatch(/CARO/);
+    expect(text).toMatch(/PRICE/);
   });
 });

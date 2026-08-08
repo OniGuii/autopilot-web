@@ -4,14 +4,18 @@ export type SalesUrgency = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export type SalesPurchaseIntentLevel = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
 
+/** Fase 11E.3 — commercial objection catalog. */
 export type SalesObjectionCode =
-  | 'CARO'
-  | 'SEM_TEMPO'
-  | 'PRECISO_PENSAR'
-  | 'VER_COM_SOCIO'
-  | 'COMPARANDO_CONCORRENTE';
+  'PRICE' | 'TIME' | 'TRUST' | 'COMPARISON' | 'AUTHORITY' | 'NEED' | 'UNKNOWN';
 
 export type SalesTemperature = 'COLD' | 'WARM' | 'HOT';
+
+/** Append-only history of detected objections (11E.3). */
+export type ObjectionHistoryEntry = {
+  type: SalesObjectionCode;
+  at: string;
+  messageId?: string;
+};
 
 export type SalesMemorySlots = {
   budget: string | null;
@@ -21,6 +25,8 @@ export type SalesMemorySlots = {
   paymentPreference: string | null;
   deliveryPreference: string | null;
   lastObjection: SalesObjectionCode | null;
+  /** Fase 11E.3 — chronological objection events. */
+  objectionHistory: ObjectionHistoryEntry[];
   purchaseIntentLevel: SalesPurchaseIntentLevel;
 };
 
@@ -43,6 +49,7 @@ export type SalesMemoryPatch = Partial<{
   paymentPreference: string;
   deliveryPreference: string;
   lastObjection: SalesObjectionCode;
+  objectionHistory: ObjectionHistoryEntry[];
   purchaseIntentLevel: SalesPurchaseIntentLevel;
 }>;
 
@@ -54,6 +61,7 @@ export type SalesMemoryField =
   | 'paymentPreference'
   | 'deliveryPreference'
   | 'lastObjection'
+  | 'objectionHistory'
   | 'purchaseIntentLevel';
 
 export type SalesMemoryMergeResult = {

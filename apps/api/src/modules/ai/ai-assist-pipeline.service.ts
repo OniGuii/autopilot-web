@@ -34,6 +34,10 @@ import { AiIntentService } from './ai-intent.service';
 import { AiRecoveryService } from './ai-recovery.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import { LeadScoringService } from './lead-scoring.service';
+import {
+  ObjectionEngineService,
+  type ObjectionHandleResult,
+} from './objection-engine.service';
 import { SalesMemoryService } from './sales-memory.service';
 
 export type AssistInboundInput = {
@@ -80,6 +84,12 @@ type PipelineMetadata = {
   correlationId?: string;
   outboundMessageId?: string;
   skipReason?: string;
+  objection?: {
+    type: string;
+    canAuto: boolean;
+    requiresHumanReason: string | null;
+  } | null;
+  requiresHumanReason?: string | null;
 };
 
 @Injectable()
@@ -97,6 +107,7 @@ export class AiAssistPipelineService {
     @Optional() private readonly aiRecovery?: AiRecoveryService,
     @Optional() private readonly salesMemory?: SalesMemoryService,
     @Optional() private readonly leadScoring?: LeadScoringService,
+    @Optional() private readonly objectionEngine?: ObjectionEngineService,
   ) {}
 
   /**
@@ -208,6 +219,29 @@ export class AiAssistPipelineService {
       }
     }
 
+    // 11E.3 — Objection Engine (detect/persist/reply; does not loosen AUTO rules).
+    let objection: ObjectionHandleResult | null = null;
+    if (this.objectionEngine) {
+      try {
+        objection = await this.objectionEngine.handle({
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          leadId: input.leadId,
+          messageId: input.messageId,
+          messageBody: message,
+          intent: classification.intent,
+        });
+        if (!objection.detected) objection = null;
+      } catch (err) {
+        this.logger.warn(
+          `objection engine failed company=${input.companyId} conversation=${input.conversationId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        objection = null;
+      }
+    }
+
     const kb = await this.kbResolver.resolve({
       companyId: input.companyId,
       intent: classification.intent,
@@ -225,6 +259,13 @@ export class AiAssistPipelineService {
     );
     let requiresHuman = escalation.escalated;
     let escalationReason = escalation.escalationReason;
+    let requiresHumanReason: string | null = escalation.escalationReason;
+
+    if (objection?.requiresHuman) {
+      requiresHuman = true;
+      escalationReason = objection.requiresHumanReason ?? 'OBJECTION';
+      requiresHumanReason = objection.requiresHumanReason;
+    }
 
     this.prom?.recordAiIntent(classification.intent);
     if (kbHit) {
@@ -233,13 +274,16 @@ export class AiAssistPipelineService {
       this.prom?.recordAiKbMiss();
     }
 
-    const suggestedBody = this.buildSuggestedBody({
+    let suggestedBody = this.buildSuggestedBody({
       intent: classification.intent,
       requiresHuman,
       escalationReason,
       kbTitle: kb.bestMatch?.title,
       kbBody: kb.bestMatch?.body,
     });
+    if (objection?.body) {
+      suggestedBody = objection.body;
+    }
 
     const conversation = await this.prisma.conversation.findFirst({
       where: {
@@ -266,17 +310,28 @@ export class AiAssistPipelineService {
     const assignedUserId =
       conversation.assignedUserId ?? conversation.lead.ownerId ?? null;
 
+    // Existing AUTO intent rules (11C) — unchanged.
     const neverAuto =
       classification.intent === AiIntent.COMPLAINT ||
       classification.intent === AiIntent.HUMAN ||
       classification.intent === AiIntent.UNKNOWN ||
       !this.intentService.isAutoSafeIntent(classification.intent);
 
-    const wantAuto =
+    const wantAutoIntent =
       settings.mode === AiAgentMode.AUTO &&
       !neverAuto &&
       kbHit &&
       !requiresHuman;
+
+    // 11E.3 — narrow objection AUTO (PRICE/TIME/TRUST + WARM/HOT only).
+    // Does not loosen COMPLAINT/HUMAN/guardrails; separate allowlist.
+    const wantAutoObjection =
+      settings.mode === AiAgentMode.AUTO &&
+      Boolean(objection?.detected) &&
+      Boolean(objection?.canAuto) &&
+      !requiresHuman;
+
+    const wantAuto = wantAutoObjection || (wantAutoIntent && !objection);
 
     if (wantAuto && this.whatsappSend) {
       const gate = await this.guardrails.evaluate({
@@ -298,6 +353,7 @@ export class AiAssistPipelineService {
           suggestedBody,
           assignedUserId,
           mode: settings.mode,
+          objection,
         });
       }
 
@@ -306,18 +362,40 @@ export class AiAssistPipelineService {
         intent: classification.intent,
         reason: gate.reason,
         pipeline: AI_AUTO_PIPELINE,
+        objectionType: objection?.type ?? null,
       });
       // Degrade to ASSIST suggestion path.
       this.logger.debug(
         `AUTO skipped company=${input.companyId} reason=${gate.reason}`,
       );
-    } else if (settings.mode === AiAgentMode.AUTO && neverAuto) {
+    } else if (
+      settings.mode === AiAgentMode.AUTO &&
+      neverAuto &&
+      !wantAutoObjection
+    ) {
       requiresHuman = true;
       escalationReason = escalationReason ?? classification.intent;
-    } else if (settings.mode === AiAgentMode.AUTO && !kbHit && kbRequired) {
+      requiresHumanReason = requiresHumanReason ?? classification.intent;
+    } else if (
+      settings.mode === AiAgentMode.AUTO &&
+      !kbHit &&
+      kbRequired &&
+      !wantAutoObjection
+    ) {
       requiresHuman = true;
       escalationReason =
         escalationReason ?? `${classification.intent}_WITHOUT_KB`;
+      requiresHumanReason = requiresHumanReason ?? escalationReason;
+    } else if (
+      settings.mode === AiAgentMode.AUTO &&
+      objection &&
+      !objection.canAuto &&
+      !requiresHuman
+    ) {
+      // Objection present but not AUTO-eligible → ASSIST suggestion only.
+      this.logger.debug(
+        `AUTO blocked by objection type=${objection.type} company=${input.companyId}`,
+      );
     }
 
     if (requiresHuman) this.prom?.recordAiResponseEscalated();
@@ -343,6 +421,14 @@ export class AiAssistPipelineService {
       generatedAt: new Date().toISOString(),
       attemptCount: 0,
       autoSend: false,
+      objection: objection
+        ? {
+            type: objection.type!,
+            canAuto: objection.canAuto,
+            requiresHumanReason: objection.requiresHumanReason,
+          }
+        : null,
+      requiresHumanReason,
     };
 
     const followUp = await this.prisma.$transaction(async (tx) => {
@@ -431,6 +517,7 @@ export class AiAssistPipelineService {
       suggestedBody: string;
       assignedUserId: string | null;
       mode: AiAgentMode;
+      objection?: ObjectionHandleResult | null;
     },
   ): Promise<AssistPipelineResult> {
     const correlationId = newCorrelationId();
@@ -454,6 +541,14 @@ export class AiAssistPipelineService {
         },
       );
 
+      const objectionMeta = ctx.objection?.detected
+        ? {
+            type: ctx.objection.type!,
+            canAuto: ctx.objection.canAuto,
+            requiresHumanReason: ctx.objection.requiresHumanReason,
+          }
+        : null;
+
       const metadata: PipelineMetadata = {
         source: AI_METADATA_SOURCE,
         pipeline: AI_AUTO_PIPELINE,
@@ -470,6 +565,8 @@ export class AiAssistPipelineService {
         autoSend: true,
         correlationId: sent.correlationId,
         outboundMessageId: sent.messageId,
+        objection: objectionMeta,
+        requiresHumanReason: null,
       };
 
       const followUp = await this.prisma.$transaction(async (tx) => {

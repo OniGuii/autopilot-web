@@ -41,11 +41,11 @@ describe('SalesMemoryExtractorService (11E.1)', () => {
     expect(patch.productInterest?.some((p) => /plano/i.test(p))).toBe(true);
   });
 
-  it('extracts objection CARO', () => {
+  it('extracts objection PRICE', () => {
     const patch = service.extract({
       message: 'Tá muito caro para mim',
     });
-    expect(patch.lastObjection).toBe('CARO');
+    expect(patch.lastObjection).toBe('PRICE');
   });
 
   it('extracts purchase intent HIGH', () => {
