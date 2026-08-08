@@ -55,6 +55,9 @@ export class SalesMemoryService {
       version: 0,
       updatedAt: new Date(0).toISOString(),
       sourceMessageIds: [],
+      score: 0,
+      temperature: 'COLD',
+      lastScoreAt: null,
     };
   }
 
@@ -173,6 +176,10 @@ export class SalesMemoryService {
       ...current,
       productInterest: [...current.productInterest],
       sourceMessageIds: [...current.sourceMessageIds],
+      // 11E.2 — preserve score fields; LeadScoringService owns updates.
+      score: current.score,
+      temperature: current.temperature,
+      lastScoreAt: current.lastScoreAt,
     };
 
     const applyScalar = <K extends SalesMemoryField>(
@@ -379,6 +386,9 @@ export class SalesMemoryService {
     if (memory.purchaseIntentLevel !== 'NONE') {
       bits.push(`intenção: ${memory.purchaseIntentLevel}`);
     }
+    if (memory.lastScoreAt != null || memory.score > 0) {
+      bits.push(`score: ${memory.score} (${memory.temperature})`);
+    }
     return bits.length ? bits.join(' · ') : null;
   }
 
@@ -416,6 +426,17 @@ export class SalesMemoryService {
       sourceMessageIds: Array.isArray(m.sourceMessageIds)
         ? m.sourceMessageIds.filter((x): x is string => typeof x === 'string')
         : [],
+      score:
+        typeof m.score === 'number' && Number.isFinite(m.score)
+          ? Math.max(0, Math.min(100, Math.round(m.score)))
+          : 0,
+      temperature:
+        m.temperature === 'HOT' ||
+        m.temperature === 'WARM' ||
+        m.temperature === 'COLD'
+          ? m.temperature
+          : 'COLD',
+      lastScoreAt: typeof m.lastScoreAt === 'string' ? m.lastScoreAt : null,
     };
   }
 
@@ -460,6 +481,9 @@ export class SalesMemoryService {
       deliveryPreference: memory.deliveryPreference,
       lastObjection: memory.lastObjection,
       purchaseIntentLevel: memory.purchaseIntentLevel,
+      score: memory.score,
+      temperature: memory.temperature,
+      lastScoreAt: memory.lastScoreAt,
       updatedAt: memory.updatedAt,
     };
   }

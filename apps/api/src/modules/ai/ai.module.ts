@@ -21,6 +21,8 @@ import { KnowledgeBaseController } from './knowledge-base.controller';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { OpenAiClient } from './openai.client';
+import { LeadScoringController } from './lead-scoring.controller';
+import { LeadScoringService } from './lead-scoring.service';
 import { SalesMemoryController } from './sales-memory.controller';
 import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
 import { SalesMemoryService } from './sales-memory.service';
@@ -38,6 +40,7 @@ import { SalesMemoryService } from './sales-memory.service';
     KnowledgeBaseController,
     AiRecoveryController,
     SalesMemoryController,
+    LeadScoringController,
   ],
   providers: [
     AiService,
@@ -56,6 +59,7 @@ import { SalesMemoryService } from './sales-memory.service';
     AiRecoveryScanner,
     SalesMemoryExtractorService,
     SalesMemoryService,
+    LeadScoringService,
   ],
   exports: [
     AiService,
@@ -68,6 +72,7 @@ import { SalesMemoryService } from './sales-memory.service';
     AiRecoveryService,
     AiRecoverySettingsService,
     SalesMemoryService,
+    LeadScoringService,
   ],
 })
 export class AiModule {}

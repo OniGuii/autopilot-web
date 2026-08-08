@@ -11,6 +11,8 @@ export type SalesObjectionCode =
   | 'VER_COM_SOCIO'
   | 'COMPARANDO_CONCORRENTE';
 
+export type SalesTemperature = 'COLD' | 'WARM' | 'HOT';
+
 export type SalesMemorySlots = {
   budget: string | null;
   productInterest: string[];
@@ -26,6 +28,10 @@ export type SalesMemory = SalesMemorySlots & {
   version: number;
   updatedAt: string;
   sourceMessageIds: string[];
+  /** Fase 11E.2 — deterministic commercial score 0–100. */
+  score: number;
+  temperature: SalesTemperature;
+  lastScoreAt: string | null;
 };
 
 /** Partial patch from rule extractor — only set fields that were detected. */

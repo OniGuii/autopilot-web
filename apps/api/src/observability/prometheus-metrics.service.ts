@@ -73,6 +73,10 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly salesMemoryUpdatesTotal: Counter<string>;
   readonly salesMemoryFieldsDetectedTotal: Counter<string>;
   readonly salesMemoryConflictsTotal: Counter<string>;
+  /** Fase 11E.2 — Lead Scoring temperature transitions. */
+  readonly leadScoreHotTotal: Counter<string>;
+  readonly leadScoreWarmTotal: Counter<string>;
+  readonly leadScoreColdTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -324,6 +328,21 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       help: 'Sales Memory slot conflicts on merge (Fase 11E.1)',
       registers: [this.registry],
     });
+    this.leadScoreHotTotal = new Counter({
+      name: 'lead_score_hot_total',
+      help: 'Lead became HOT temperature (Fase 11E.2)',
+      registers: [this.registry],
+    });
+    this.leadScoreWarmTotal = new Counter({
+      name: 'lead_score_warm_total',
+      help: 'Lead became WARM temperature (Fase 11E.2)',
+      registers: [this.registry],
+    });
+    this.leadScoreColdTotal = new Counter({
+      name: 'lead_score_cold_total',
+      help: 'Lead became COLD temperature (Fase 11E.2)',
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -558,6 +577,12 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordSalesMemoryConflicts(n = 1): void {
     if (n > 0) this.salesMemoryConflictsTotal.inc(n);
+  }
+
+  recordLeadScoreTemperature(temperature: 'HOT' | 'WARM' | 'COLD'): void {
+    if (temperature === 'HOT') this.leadScoreHotTotal.inc();
+    else if (temperature === 'WARM') this.leadScoreWarmTotal.inc();
+    else this.leadScoreColdTotal.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {
