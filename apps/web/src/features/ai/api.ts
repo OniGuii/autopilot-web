@@ -13,6 +13,9 @@ import type {
   NbaConversationResponse,
   NbaDashboardResponse,
   NbaLeadResponse,
+  PurchaseIntentConversationResponse,
+  PurchaseIntentDashboardResponse,
+  PurchaseIntentLeadResponse,
 } from "@/lib/api/types";
 
 export function fetchAiSettings() {
@@ -138,4 +141,22 @@ export function fetchNbaForConversation(conversationId: string) {
 
 export function fetchNbaForLead(leadId: string) {
   return apiRequest<NbaLeadResponse>(endpoints.ai.nbaLead(leadId));
+}
+
+export function fetchPurchaseIntentDashboard() {
+  return apiRequest<PurchaseIntentDashboardResponse>(
+    endpoints.ai.purchaseIntentDashboard,
+  );
+}
+
+export function fetchPurchaseIntentForConversation(conversationId: string) {
+  return apiRequest<PurchaseIntentConversationResponse>(
+    endpoints.ai.purchaseIntentConversation(conversationId),
+  );
+}
+
+export function fetchPurchaseIntentForLead(leadId: string) {
+  return apiRequest<PurchaseIntentLeadResponse>(
+    endpoints.ai.purchaseIntentLead(leadId),
+  );
 }

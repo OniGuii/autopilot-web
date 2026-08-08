@@ -22,6 +22,9 @@ describe('NextBestActionService (11E.4)', () => {
     lastScoreAt: new Date().toISOString(),
     nextBestAction: null,
     lastActionDecisionAt: null,
+    purchaseIntent: null,
+    purchaseIntentScore: 0,
+    purchaseIntentUpdatedAt: null,
     ...over,
   });
 

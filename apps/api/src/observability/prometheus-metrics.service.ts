@@ -85,6 +85,11 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly nbaDecidedTotal: Counter<string>;
   readonly nbaChangedTotal: Counter<string>;
   readonly nbaExecutedTotal: Counter<string>;
+  /** Fase 11E.5 — Purchase Intent. */
+  readonly purchaseIntentCalculatedTotal: Counter<string>;
+  readonly purchaseIntentChangedTotal: Counter<string>;
+  readonly purchaseIntentHighTotal: Counter<string>;
+  readonly purchaseIntentVeryHighTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -387,6 +392,28 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       labelNames: ['action'],
       registers: [this.registry],
     });
+    this.purchaseIntentCalculatedTotal = new Counter({
+      name: 'purchase_intent_calculated_total',
+      help: 'Purchase Intent calculations (Fase 11E.5)',
+      labelNames: ['band'],
+      registers: [this.registry],
+    });
+    this.purchaseIntentChangedTotal = new Counter({
+      name: 'purchase_intent_changed_total',
+      help: 'Purchase Intent band changes (Fase 11E.5)',
+      labelNames: ['band'],
+      registers: [this.registry],
+    });
+    this.purchaseIntentHighTotal = new Counter({
+      name: 'purchase_intent_high_total',
+      help: 'Purchase Intent entered HIGH band (Fase 11E.5)',
+      registers: [this.registry],
+    });
+    this.purchaseIntentVeryHighTotal = new Counter({
+      name: 'purchase_intent_very_high_total',
+      help: 'Purchase Intent entered VERY_HIGH band (Fase 11E.5)',
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -651,6 +678,22 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordNbaExecuted(action: string): void {
     this.nbaExecutedTotal.inc({ action: action || 'WAIT' });
+  }
+
+  recordPurchaseIntentCalculated(band: string): void {
+    this.purchaseIntentCalculatedTotal.inc({ band: band || 'VERY_LOW' });
+  }
+
+  recordPurchaseIntentChanged(band: string): void {
+    this.purchaseIntentChangedTotal.inc({ band: band || 'VERY_LOW' });
+  }
+
+  recordPurchaseIntentHigh(): void {
+    this.purchaseIntentHighTotal.inc();
+  }
+
+  recordPurchaseIntentVeryHigh(): void {
+    this.purchaseIntentVeryHighTotal.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {

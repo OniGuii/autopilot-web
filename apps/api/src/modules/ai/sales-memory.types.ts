@@ -23,6 +23,10 @@ export type NextBestActionCode =
   | 'ESCALATE_HUMAN'
   | 'WAIT';
 
+/** Fase 11E.5 — Purchase Intent band (0–100 score). */
+export type PurchaseIntentBand =
+  'VERY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY_HIGH';
+
 /** Append-only history of detected objections (11E.3). */
 export type ObjectionHistoryEntry = {
   type: SalesObjectionCode;
@@ -54,6 +58,10 @@ export type SalesMemory = SalesMemorySlots & {
   /** Fase 11E.4 — last decided NBA. */
   nextBestAction: NextBestActionCode | null;
   lastActionDecisionAt: string | null;
+  /** Fase 11E.5 — purchase intent score/band (distinct from purchaseIntentLevel slot). */
+  purchaseIntent: PurchaseIntentBand | null;
+  purchaseIntentScore: number;
+  purchaseIntentUpdatedAt: string | null;
 };
 
 /** Partial patch from rule extractor — only set fields that were detected. */
