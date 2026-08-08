@@ -170,32 +170,45 @@ export class SalesMemoryExtractorService {
     return null;
   }
 
+  /**
+   * Lightweight mirror of 11E.3 ObjectionDetectionService codes.
+   * Full engine + history lives in ObjectionEngineService.
+   */
   private extractObjection(text: string): SalesObjectionCode | null {
     if (
-      /\b(caro|car[ií]ssimo|fora\s+do\s+or[cç]amento|muito\s+caro)\b/i.test(
+      /\b(caro|car[ií]ssimo|fora\s+do\s+or[cç]amento|muito\s+caro|sem\s+dinheiro)\b/i.test(
         text,
       )
     ) {
-      return 'CARO';
-    }
-    if (/\b(sem\s+tempo|agora\s+n[aã]o|depois\s+falo)\b/i.test(text)) {
-      return 'SEM_TEMPO';
+      return 'PRICE';
     }
     if (
-      /\b(vou\s+pensar|preciso\s+pensar|me\s+d[aá]\s+um\s+tempo)\b/i.test(text)
+      /\b(vou\s+pensar|preciso\s+pensar|mais\s+tarde|sem\s+tempo|agora\s+n[aã]o)\b/i.test(
+        text,
+      )
     ) {
-      return 'PRECISO_PENSAR';
+      return 'TIME';
+    }
+    if (/\b(n[aã]o\s+conhe[cç]o|confi[aá]vel)\b/i.test(text)) {
+      return 'TRUST';
     }
     if (
-      /\b(s[oó]cio|esposa|marido|gerente|chefe)\b/i.test(text) &&
-      /\b(falar|ver|consultar|combinar)\b/i.test(text)
+      /\b(estou\s+comparando|outra\s+loja|concorrente|mais\s+barato\s+no)\b/i.test(
+        text,
+      )
     ) {
-      return 'VER_COM_SOCIO';
+      return 'COMPARISON';
     }
     if (
-      /\b(concorrente|mais\s+barato\s+no|vi\s+em\s+outro|compar)/i.test(text)
+      /\b(s[oó]cio|esposa|marido|gerente|chefe|aprova[cç][aã]o)\b/i.test(
+        text,
+      ) &&
+      /\b(falar|ver|consultar|combinar|preciso)\b/i.test(text)
     ) {
-      return 'COMPARANDO_CONCORRENTE';
+      return 'AUTHORITY';
+    }
+    if (/\b(n[aã]o\s+preciso|n[aã]o\s+vejo\s+vantagem)\b/i.test(text)) {
+      return 'NEED';
     }
     return null;
   }

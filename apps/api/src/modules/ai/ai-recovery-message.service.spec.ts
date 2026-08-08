@@ -103,6 +103,7 @@ describe('AiRecoveryMessageService + Sales Memory (11E.1)', () => {
       paymentPreference: 'Pix',
       deliveryPreference: null,
       lastObjection: null,
+      objectionHistory: [],
       purchaseIntentLevel: 'LOW',
       updatedAt: new Date().toISOString(),
       sourceMessageIds: [],

@@ -144,8 +144,8 @@ export class LeadScoringService {
 
     if (memory.lastObjection) {
       const strong =
-        memory.lastObjection === 'CARO' ||
-        memory.lastObjection === 'COMPARANDO_CONCORRENTE';
+        memory.lastObjection === 'PRICE' ||
+        memory.lastObjection === 'COMPARISON';
       const delta = strong ? w.strongObjection : w.softObjection;
       breakdown.objection = delta;
       score += delta;

@@ -77,6 +77,10 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly leadScoreHotTotal: Counter<string>;
   readonly leadScoreWarmTotal: Counter<string>;
   readonly leadScoreColdTotal: Counter<string>;
+  /** Fase 11E.3 — Objection Engine. */
+  readonly objectionDetectedTotal: Counter<string>;
+  readonly objectionHandledTotal: Counter<string>;
+  readonly objectionEscalatedTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -343,6 +347,24 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       help: 'Lead became COLD temperature (Fase 11E.2)',
       registers: [this.registry],
     });
+    this.objectionDetectedTotal = new Counter({
+      name: 'objection_detected_total',
+      help: 'Commercial objections detected (Fase 11E.3)',
+      labelNames: ['type'],
+      registers: [this.registry],
+    });
+    this.objectionHandledTotal = new Counter({
+      name: 'objection_handled_total',
+      help: 'Commercial objections handled without escalation (Fase 11E.3)',
+      labelNames: ['type'],
+      registers: [this.registry],
+    });
+    this.objectionEscalatedTotal = new Counter({
+      name: 'objection_escalated_total',
+      help: 'Commercial objections escalated to human (Fase 11E.3)',
+      labelNames: ['type'],
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -583,6 +605,18 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
     if (temperature === 'HOT') this.leadScoreHotTotal.inc();
     else if (temperature === 'WARM') this.leadScoreWarmTotal.inc();
     else this.leadScoreColdTotal.inc();
+  }
+
+  recordObjectionDetected(type: string): void {
+    this.objectionDetectedTotal.inc({ type: type || 'UNKNOWN' });
+  }
+
+  recordObjectionHandled(type: string): void {
+    this.objectionHandledTotal.inc({ type: type || 'UNKNOWN' });
+  }
+
+  recordObjectionEscalated(type: string): void {
+    this.objectionEscalatedTotal.inc({ type: type || 'UNKNOWN' });
   }
 
   recordWhatsappSend(ok: boolean): void {

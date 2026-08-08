@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PrometheusMetricsService } from '../../observability/prometheus-metrics.service';
 import { AuditService } from '../audit/audit.service';
 import {
+  OBJECTION_HISTORY_MAX,
   SALES_MEMORY_CLEARED,
   SALES_MEMORY_CREATED,
   SALES_MEMORY_KEY,
@@ -18,10 +19,12 @@ import {
 } from './ai.constants';
 import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
 import type {
+  ObjectionHistoryEntry,
   SalesMemory,
   SalesMemoryField,
   SalesMemoryMergeResult,
   SalesMemoryPatch,
+  SalesObjectionCode,
   SalesPurchaseIntentLevel,
 } from './sales-memory.types';
 
@@ -35,6 +38,7 @@ const EMPTY_SLOTS = {
   paymentPreference: null as string | null,
   deliveryPreference: null as string | null,
   lastObjection: null as SalesMemory['lastObjection'],
+  objectionHistory: [] as ObjectionHistoryEntry[],
   purchaseIntentLevel: 'NONE' as SalesPurchaseIntentLevel,
 };
 
@@ -175,6 +179,7 @@ export class SalesMemoryService {
     const next: SalesMemory = {
       ...current,
       productInterest: [...current.productInterest],
+      objectionHistory: [...current.objectionHistory],
       sourceMessageIds: [...current.sourceMessageIds],
       // 11E.2 — preserve score fields; LeadScoringService owns updates.
       score: current.score,
@@ -234,6 +239,25 @@ export class SalesMemoryService {
       (v) => v == null,
       (a, b) => a === b,
     );
+
+    if (patch.objectionHistory && patch.objectionHistory.length > 0) {
+      fieldsDetected.push('objectionHistory');
+      const seen = new Set(
+        next.objectionHistory.map(
+          (h) => `${h.type}|${h.at}|${h.messageId ?? ''}`,
+        ),
+      );
+      for (const h of patch.objectionHistory) {
+        const key = `${h.type}|${h.at}|${h.messageId ?? ''}`;
+        if (!seen.has(key)) {
+          next.objectionHistory.push(h);
+          seen.add(key);
+        }
+      }
+      next.objectionHistory = next.objectionHistory.slice(
+        -OBJECTION_HISTORY_MAX,
+      );
+    }
 
     if (patch.purchaseIntentLevel !== undefined) {
       fieldsDetected.push('purchaseIntentLevel');
@@ -383,6 +407,9 @@ export class SalesMemoryService {
       bits.push(`entrega: ${memory.deliveryPreference}`);
     }
     if (memory.lastObjection) bits.push(`objeção: ${memory.lastObjection}`);
+    if (memory.objectionHistory.length > 0) {
+      bits.push(`objeções: ${memory.objectionHistory.length}`);
+    }
     if (memory.purchaseIntentLevel !== 'NONE') {
       bits.push(`intenção: ${memory.purchaseIntentLevel}`);
     }
@@ -417,6 +444,7 @@ export class SalesMemoryService {
       deliveryPreference:
         typeof m.deliveryPreference === 'string' ? m.deliveryPreference : null,
       lastObjection: this.parseObjection(m.lastObjection),
+      objectionHistory: this.parseObjectionHistory(m.objectionHistory),
       purchaseIntentLevel: this.parsePurchase(m.purchaseIntentLevel),
       version: typeof m.version === 'number' && m.version >= 0 ? m.version : 0,
       updatedAt:
@@ -453,16 +481,46 @@ export class SalesMemoryService {
   }
 
   private parseObjection(v: unknown): SalesMemory['lastObjection'] {
-    const allowed = [
-      'CARO',
-      'SEM_TEMPO',
-      'PRECISO_PENSAR',
-      'VER_COM_SOCIO',
-      'COMPARANDO_CONCORRENTE',
-    ] as const;
-    return typeof v === 'string' && (allowed as readonly string[]).includes(v)
-      ? (v as SalesMemory['lastObjection'])
+    if (typeof v !== 'string') return null;
+    const legacy: Record<string, SalesObjectionCode> = {
+      CARO: 'PRICE',
+      SEM_TEMPO: 'TIME',
+      PRECISO_PENSAR: 'TIME',
+      VER_COM_SOCIO: 'AUTHORITY',
+      COMPARANDO_CONCORRENTE: 'COMPARISON',
+    };
+    if (legacy[v]) return legacy[v];
+    const allowed: SalesObjectionCode[] = [
+      'PRICE',
+      'TIME',
+      'TRUST',
+      'COMPARISON',
+      'AUTHORITY',
+      'NEED',
+      'UNKNOWN',
+    ];
+    return allowed.includes(v as SalesObjectionCode)
+      ? (v as SalesObjectionCode)
       : null;
+  }
+
+  private parseObjectionHistory(v: unknown): ObjectionHistoryEntry[] {
+    if (!Array.isArray(v)) return [];
+    const out: ObjectionHistoryEntry[] = [];
+    for (const raw of v) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const row = raw as Record<string, unknown>;
+      const type = this.parseObjection(row.type);
+      if (!type || typeof row.at !== 'string') continue;
+      out.push({
+        type,
+        at: row.at,
+        ...(typeof row.messageId === 'string'
+          ? { messageId: row.messageId }
+          : {}),
+      });
+    }
+    return out.slice(-OBJECTION_HISTORY_MAX);
   }
 
   private parsePurchase(v: unknown): SalesPurchaseIntentLevel {
@@ -480,6 +538,7 @@ export class SalesMemoryService {
       paymentPreference: memory.paymentPreference,
       deliveryPreference: memory.deliveryPreference,
       lastObjection: memory.lastObjection,
+      objectionHistory: memory.objectionHistory,
       purchaseIntentLevel: memory.purchaseIntentLevel,
       score: memory.score,
       temperature: memory.temperature,

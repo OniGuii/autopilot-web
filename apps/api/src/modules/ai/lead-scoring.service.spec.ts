@@ -109,7 +109,7 @@ describe('LeadScoringService (11E.2)', () => {
       memory.budget = 'R$ 300';
       memory.paymentPreference = 'Pix';
       memory.city = 'SP';
-      memory.lastObjection = 'CARO';
+      memory.lastObjection = 'PRICE';
       const withObjection = service.calculate(memory, {});
       const withoutObjection = service.calculate(
         { ...memory, lastObjection: null },
