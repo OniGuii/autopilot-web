@@ -42,6 +42,10 @@ import {
   ObjectionEngineService,
   type ObjectionHandleResult,
 } from './objection-engine.service';
+import {
+  PurchaseIntentService,
+  type PurchaseIntentResult,
+} from './purchase-intent.service';
 import { SalesMemoryService } from './sales-memory.service';
 
 export type AssistInboundInput = {
@@ -99,6 +103,10 @@ type PipelineMetadata = {
     reason: string;
     replyGoal: string;
   } | null;
+  purchaseIntent?: {
+    band: string;
+    score: number;
+  } | null;
 };
 
 @Injectable()
@@ -118,6 +126,7 @@ export class AiAssistPipelineService {
     @Optional() private readonly leadScoring?: LeadScoringService,
     @Optional() private readonly objectionEngine?: ObjectionEngineService,
     @Optional() private readonly nextBestAction?: NextBestActionService,
+    @Optional() private readonly purchaseIntent?: PurchaseIntentService,
   ) {}
 
   /**
@@ -320,6 +329,35 @@ export class AiAssistPipelineService {
       }
     }
 
+    // 11E.5 — Purchase Intent (context only; never triggers new AUTO actions).
+    let purchaseIntentResult: PurchaseIntentResult | null = null;
+    if (this.purchaseIntent) {
+      try {
+        purchaseIntentResult = await this.purchaseIntent.calculateAndPersist({
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          leadId: input.leadId,
+          intent: classification.intent,
+        });
+        // ASSIST: surface band in suggested body when HIGH+.
+        if (
+          settings.mode !== AiAgentMode.AUTO &&
+          (purchaseIntentResult.purchaseIntent === 'HIGH' ||
+            purchaseIntentResult.purchaseIntent === 'VERY_HIGH') &&
+          !suggestedBody.includes('Purchase Intent:')
+        ) {
+          suggestedBody = `${suggestedBody.trim()}\n\n—\nPurchase Intent: ${purchaseIntentResult.purchaseIntent} (${purchaseIntentResult.purchaseIntentScore}/100)`;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `purchase intent failed company=${input.companyId} conversation=${input.conversationId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        purchaseIntentResult = null;
+      }
+    }
+
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id: input.conversationId,
@@ -397,6 +435,7 @@ export class AiAssistPipelineService {
           mode: settings.mode,
           objection,
           nba,
+          purchaseIntent: purchaseIntentResult,
         });
       }
 
@@ -454,6 +493,12 @@ export class AiAssistPipelineService {
           replyGoal: nba.replyGoal,
         }
       : null;
+    const purchaseIntentMeta = purchaseIntentResult
+      ? {
+          band: purchaseIntentResult.purchaseIntent,
+          score: purchaseIntentResult.purchaseIntentScore,
+        }
+      : null;
 
     const metadata: PipelineMetadata = {
       source: AI_METADATA_SOURCE,
@@ -481,6 +526,7 @@ export class AiAssistPipelineService {
         : null,
       requiresHumanReason,
       nba: nbaMeta,
+      purchaseIntent: purchaseIntentMeta,
     };
 
     const followUp = await this.prisma.$transaction(async (tx) => {
@@ -589,6 +635,7 @@ export class AiAssistPipelineService {
       mode: AiAgentMode;
       objection?: ObjectionHandleResult | null;
       nba?: NbaDecisionResult | null;
+      purchaseIntent?: PurchaseIntentResult | null;
     },
   ): Promise<AssistPipelineResult> {
     const correlationId = newCorrelationId();
@@ -626,6 +673,12 @@ export class AiAssistPipelineService {
             replyGoal: ctx.nba.replyGoal,
           }
         : null;
+      const purchaseIntentMeta = ctx.purchaseIntent
+        ? {
+            band: ctx.purchaseIntent.purchaseIntent,
+            score: ctx.purchaseIntent.purchaseIntentScore,
+          }
+        : null;
 
       const metadata: PipelineMetadata = {
         source: AI_METADATA_SOURCE,
@@ -646,6 +699,7 @@ export class AiAssistPipelineService {
         objection: objectionMeta,
         requiresHumanReason: null,
         nba: nbaMeta,
+        purchaseIntent: purchaseIntentMeta,
       };
 
       const followUp = await this.prisma.$transaction(async (tx) => {

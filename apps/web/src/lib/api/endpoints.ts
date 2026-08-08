@@ -89,6 +89,11 @@ export const endpoints = {
     nbaConversation: (conversationId: string) =>
       `/api/ai/nba/conversation/${conversationId}`,
     nbaLead: (leadId: string) => `/api/ai/nba/lead/${leadId}`,
+    purchaseIntentDashboard: "/api/ai/purchase-intent/dashboard",
+    purchaseIntentConversation: (conversationId: string) =>
+      `/api/ai/purchase-intent/conversation/${conversationId}`,
+    purchaseIntentLead: (leadId: string) =>
+      `/api/ai/purchase-intent/lead/${leadId}`,
   },
   knowledgeBase: {
     list: "/api/knowledge-base",

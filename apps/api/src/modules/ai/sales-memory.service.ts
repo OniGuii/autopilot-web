@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import {
   NBA_ACTIONS,
   OBJECTION_HISTORY_MAX,
+  PURCHASE_INTENT_BANDS,
   SALES_MEMORY_CLEARED,
   SALES_MEMORY_CREATED,
   SALES_MEMORY_KEY,
@@ -22,6 +23,7 @@ import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
 import type {
   NextBestActionCode,
   ObjectionHistoryEntry,
+  PurchaseIntentBand,
   SalesMemory,
   SalesMemoryField,
   SalesMemoryMergeResult,
@@ -66,6 +68,9 @@ export class SalesMemoryService {
       lastScoreAt: null,
       nextBestAction: null,
       lastActionDecisionAt: null,
+      purchaseIntent: null,
+      purchaseIntentScore: 0,
+      purchaseIntentUpdatedAt: null,
     };
   }
 
@@ -185,12 +190,15 @@ export class SalesMemoryService {
       productInterest: [...current.productInterest],
       objectionHistory: [...current.objectionHistory],
       sourceMessageIds: [...current.sourceMessageIds],
-      // 11E.2 / 11E.4 — preserve score + NBA fields (owned by dedicated services).
+      // 11E.2 / 11E.4 / 11E.5 — preserve score + NBA + purchase intent fields.
       score: current.score,
       temperature: current.temperature,
       lastScoreAt: current.lastScoreAt,
       nextBestAction: current.nextBestAction,
       lastActionDecisionAt: current.lastActionDecisionAt,
+      purchaseIntent: current.purchaseIntent,
+      purchaseIntentScore: current.purchaseIntentScore,
+      purchaseIntentUpdatedAt: current.purchaseIntentUpdatedAt,
     };
 
     const applyScalar = <K extends SalesMemoryField>(
@@ -425,6 +433,11 @@ export class SalesMemoryService {
     if (memory.nextBestAction) {
       bits.push(`nba: ${memory.nextBestAction}`);
     }
+    if (memory.purchaseIntentUpdatedAt && memory.purchaseIntent) {
+      bits.push(
+        `purchaseIntent: ${memory.purchaseIntent} (${memory.purchaseIntentScore})`,
+      );
+    }
     return bits.length ? bits.join(' · ') : null;
   }
 
@@ -478,6 +491,16 @@ export class SalesMemoryService {
       lastActionDecisionAt:
         typeof m.lastActionDecisionAt === 'string'
           ? m.lastActionDecisionAt
+          : null,
+      purchaseIntent: this.parsePurchaseBand(m.purchaseIntent),
+      purchaseIntentScore:
+        typeof m.purchaseIntentScore === 'number' &&
+        Number.isFinite(m.purchaseIntentScore)
+          ? Math.max(0, Math.min(100, Math.round(m.purchaseIntentScore)))
+          : 0,
+      purchaseIntentUpdatedAt:
+        typeof m.purchaseIntentUpdatedAt === 'string'
+          ? m.purchaseIntentUpdatedAt
           : null,
     };
   }
@@ -549,6 +572,13 @@ export class SalesMemoryService {
       : null;
   }
 
+  private parsePurchaseBand(v: unknown): PurchaseIntentBand | null {
+    return typeof v === 'string' &&
+      (PURCHASE_INTENT_BANDS as readonly string[]).includes(v)
+      ? (v as PurchaseIntentBand)
+      : null;
+  }
+
   private auditSnapshot(memory: SalesMemory) {
     return {
       version: memory.version,
@@ -566,6 +596,9 @@ export class SalesMemoryService {
       lastScoreAt: memory.lastScoreAt,
       nextBestAction: memory.nextBestAction,
       lastActionDecisionAt: memory.lastActionDecisionAt,
+      purchaseIntent: memory.purchaseIntent,
+      purchaseIntentScore: memory.purchaseIntentScore,
+      purchaseIntentUpdatedAt: memory.purchaseIntentUpdatedAt,
       updatedAt: memory.updatedAt,
     };
   }

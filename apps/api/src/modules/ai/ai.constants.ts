@@ -139,6 +139,59 @@ export const NBA_ACTIONS = [
   'WAIT',
 ] as const;
 
+/** Fase 11E.5 — Purchase Intent. */
+export const PURCHASE_INTENT_CALCULATED = 'PURCHASE_INTENT_CALCULATED';
+export const PURCHASE_INTENT_CHANGED = 'PURCHASE_INTENT_CHANGED';
+export const PURCHASE_INTENT_HIGH = 'PURCHASE_INTENT_HIGH';
+export const PURCHASE_INTENT_VERY_HIGH = 'PURCHASE_INTENT_VERY_HIGH';
+export const PURCHASE_INTENT_PIPELINE = 'purchase-intent-11e5';
+/** Bands (inclusive): VERY_LOW 0–24 · LOW 25–49 · MEDIUM 50–69 · HIGH 70–89 · VERY_HIGH 90–100 */
+export const PURCHASE_INTENT_VERY_LOW_MAX = 24;
+export const PURCHASE_INTENT_LOW_MAX = 49;
+export const PURCHASE_INTENT_MEDIUM_MAX = 69;
+export const PURCHASE_INTENT_HIGH_MAX = 89;
+export const PURCHASE_INTENT_BANDS = [
+  'VERY_LOW',
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+  'VERY_HIGH',
+] as const;
+export const PURCHASE_INTENT_WEIGHTS = {
+  temperatureHot: 22,
+  temperatureWarm: 10,
+  temperatureCold: -12,
+  leadScoreFactor: 0.25,
+  askedPrice: 10,
+  askedPayment: 14,
+  askedDelivery: 10,
+  askedWarranty: 8,
+  hasProduct: 12,
+  hasBudget: 12,
+  hasCity: 8,
+  hasPaymentPref: 10,
+  hasDeliveryPref: 8,
+  slotPurchaseHigh: 12,
+  slotPurchaseMedium: 6,
+  nbaOfferClose: 10,
+  nbaOfferAlternative: 4,
+  fastReply: 8,
+  noRecentObjection: 5,
+  multiInboundPerExtra: 2,
+  multiInboundCap: 8,
+  closeReadyBonus: 18,
+  leadLost: -50,
+  complaintHistory: -28,
+  authorityObjection: -18,
+  repeatedObjections: -14,
+  recoveryIgnored: -12,
+  silence: -10,
+  prolongedCooldown: -8,
+  needObjection: -10,
+} as const;
+/** Default estimated ticket (BRL) when budget cannot be parsed. */
+export const PURCHASE_INTENT_DEFAULT_TICKET = 500;
+
 /**
  * Score weights (documented for 11E.2).
  * Positive signals add; negative subtract; final clamp 0–100.

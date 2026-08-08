@@ -112,6 +112,9 @@ describe('AiRecoveryMessageService + Sales Memory (11E.1)', () => {
       lastScoreAt: new Date().toISOString(),
       nextBestAction: null,
       lastActionDecisionAt: null,
+      purchaseIntent: null,
+      purchaseIntentScore: 0,
+      purchaseIntentUpdatedAt: null,
     });
     salesMemory.formatForPrompt.mockReturnValue(
       'interesse: Plano Pro · orçamento: R$ 400 · cidade: Campinas · score: 82 (HOT)',

@@ -762,6 +762,51 @@ export type NbaDashboardResponse = {
   conversationsWithNba: number;
 };
 
+export type PurchaseIntentBand =
+  | "VERY_LOW"
+  | "LOW"
+  | "MEDIUM"
+  | "HIGH"
+  | "VERY_HIGH";
+
+export type PurchaseIntentConversationResponse = {
+  companyId: string;
+  conversationId: string;
+  leadId: string;
+  leadStatus: LeadStatus;
+  purchaseIntent: PurchaseIntentBand | null;
+  purchaseIntentScore: number;
+  purchaseIntentUpdatedAt: string | null;
+  temperature?: "HOT" | "WARM" | "COLD";
+  score?: number;
+  bands: Record<PurchaseIntentBand, string>;
+  readOnly: boolean;
+};
+
+export type PurchaseIntentLeadResponse = {
+  companyId: string;
+  leadId: string;
+  leadStatus: LeadStatus;
+  conversationId: string | null;
+  purchaseIntent: PurchaseIntentBand | null;
+  purchaseIntentScore: number;
+  purchaseIntentUpdatedAt: string | null;
+  temperature?: "HOT" | "WARM" | "COLD";
+  score?: number;
+  bands: Record<PurchaseIntentBand, string>;
+  readOnly: boolean;
+};
+
+export type PurchaseIntentDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  bands: Record<PurchaseIntentBand, number>;
+  conversionsByBand: Record<PurchaseIntentBand, number>;
+  estimatedRevenueByBand: Record<PurchaseIntentBand, number>;
+  scoredConversations: number;
+  currency: string;
+};
+
 export type KnowledgeBaseEntry = {
   id: string;
   companyId: string;

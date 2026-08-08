@@ -28,6 +28,8 @@ import { NextBestActionService } from './next-best-action.service';
 import { ObjectionDetectionService } from './objection-detection.service';
 import { ObjectionEngineController } from './objection-engine.controller';
 import { ObjectionEngineService } from './objection-engine.service';
+import { PurchaseIntentController } from './purchase-intent.controller';
+import { PurchaseIntentService } from './purchase-intent.service';
 import { SalesMemoryController } from './sales-memory.controller';
 import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
 import { SalesMemoryService } from './sales-memory.service';
@@ -48,6 +50,7 @@ import { SalesMemoryService } from './sales-memory.service';
     LeadScoringController,
     ObjectionEngineController,
     NextBestActionController,
+    PurchaseIntentController,
   ],
   providers: [
     AiService,
@@ -70,6 +73,7 @@ import { SalesMemoryService } from './sales-memory.service';
     ObjectionDetectionService,
     ObjectionEngineService,
     NextBestActionService,
+    PurchaseIntentService,
   ],
   exports: [
     AiService,
@@ -86,6 +90,7 @@ import { SalesMemoryService } from './sales-memory.service';
     ObjectionDetectionService,
     ObjectionEngineService,
     NextBestActionService,
+    PurchaseIntentService,
   ],
 })
 export class AiModule {}

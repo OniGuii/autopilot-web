@@ -34,6 +34,9 @@ describe('ObjectionEngineService (11E.3)', () => {
     lastScoreAt: new Date().toISOString(),
     nextBestAction: null,
     lastActionDecisionAt: null,
+    purchaseIntent: null,
+    purchaseIntentScore: 0,
+    purchaseIntentUpdatedAt: null,
   });
 
   let memoryState: SalesMemory;
