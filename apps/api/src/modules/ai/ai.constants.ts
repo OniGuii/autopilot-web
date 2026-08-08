@@ -85,6 +85,44 @@ export const SALES_MEMORY_BUDGET_MAX_CHARS = 80;
 export const SALES_MEMORY_CITY_MAX_CHARS = 80;
 export const SALES_MEMORY_SLOT_MAX_CHARS = 80;
 
+/** Fase 11E.2 — Lead Scoring (deterministic, no OpenAI). */
+export const LEAD_SCORE_UPDATED = 'LEAD_SCORE_UPDATED';
+export const LEAD_BECAME_HOT = 'LEAD_BECAME_HOT';
+export const LEAD_BECAME_WARM = 'LEAD_BECAME_WARM';
+export const LEAD_BECAME_COLD = 'LEAD_BECAME_COLD';
+
+/** Temperature bands (inclusive). */
+export const LEAD_SCORE_COLD_MAX = 39;
+export const LEAD_SCORE_WARM_MAX = 69;
+/** HOT = 70–100 */
+
+/**
+ * Score weights (documented for 11E.2).
+ * Positive signals add; negative subtract; final clamp 0–100.
+ */
+export const LEAD_SCORE_WEIGHTS = {
+  askedProduct: 10,
+  askedPrice: 8,
+  hasBudget: 15,
+  askedPayment: 12,
+  askedDelivery: 6,
+  hasCity: 6,
+  urgencyHigh: 8,
+  urgencyMedium: 4,
+  purchaseIntentLow: 8,
+  purchaseIntentMedium: 15,
+  purchaseIntentHigh: 20,
+  repliedRecovery: 10,
+  multiInteractionPerExtra: 2,
+  multiInteractionCap: 10,
+  strongObjection: -12,
+  softObjection: -8,
+  leadLost: -40,
+  inactivePerDayAfter2d: -3,
+  inactiveCap: -20,
+  unansweredOutbound: -8,
+} as const;
+
 export const AI_KB_BODY_MAX = 8000;
 export const AI_KB_TITLE_MAX = 200;
 export const AI_KB_PROMPT_BUDGET_CHARS = 8000;

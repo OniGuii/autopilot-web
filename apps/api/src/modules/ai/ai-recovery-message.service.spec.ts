@@ -106,9 +106,12 @@ describe('AiRecoveryMessageService + Sales Memory (11E.1)', () => {
       purchaseIntentLevel: 'LOW',
       updatedAt: new Date().toISOString(),
       sourceMessageIds: [],
+      score: 82,
+      temperature: 'HOT',
+      lastScoreAt: new Date().toISOString(),
     });
     salesMemory.formatForPrompt.mockReturnValue(
-      'interesse: Plano Pro · orçamento: R$ 400 · cidade: Campinas',
+      'interesse: Plano Pro · orçamento: R$ 400 · cidade: Campinas · score: 82 (HOT)',
     );
     service = new AiRecoveryMessageService(
       prisma as never,
@@ -129,5 +132,8 @@ describe('AiRecoveryMessageService + Sales Memory (11E.1)', () => {
     expect(salesMemory.loadMemory).toHaveBeenCalledWith('c1', 'conv1');
     expect(out.body).toMatch(/Plano Pro|Campinas|R\$ 400/);
     expect(out.body).toMatch(/já combinamos|Retomando/i);
+    expect(out.score).toBe(82);
+    expect(out.temperature).toBe('HOT');
+    expect(out.body).toMatch(/fecharmos|avançarmos/i);
   });
 });

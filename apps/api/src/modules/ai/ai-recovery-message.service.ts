@@ -7,6 +7,7 @@ import {
 } from './ai.constants';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import { SalesMemoryService } from './sales-memory.service';
+import type { SalesTemperature } from './sales-memory.types';
 
 export type RecoveryMessageInput = {
   companyId: string;
@@ -34,6 +35,8 @@ export class AiRecoveryMessageService {
     intent: AiIntent;
     kbSource: string | null;
     promptVersion: string;
+    score: number | null;
+    temperature: SalesTemperature | null;
   }> {
     const intent = input.intent ?? AiIntent.UNKNOWN;
     const messages = await this.prisma.message.findMany({
@@ -50,8 +53,10 @@ export class AiRecoveryMessageService {
       (m) => m.direction === MessageDirection.INBOUND && m.body?.trim(),
     );
 
-    // 11E.1 — continue sales context; never restart as cold first-touch.
+    // 11E.1/11E.2 — continue sales context + expose score (no cadence change).
     let memorySummary: string | null = null;
+    let score: number | null = null;
+    let temperature: SalesTemperature | null = null;
     if (this.salesMemory) {
       try {
         const memory = await this.salesMemory.loadMemory(
@@ -59,6 +64,8 @@ export class AiRecoveryMessageService {
           input.conversationId,
         );
         memorySummary = this.salesMemory.formatForPrompt(memory);
+        score = memory.score;
+        temperature = memory.temperature;
       } catch {
         memorySummary = null;
       }
@@ -80,7 +87,7 @@ export class AiRecoveryMessageService {
     const attemptLabel =
       input.attempt <= 1 ? 'R1' : input.attempt === 2 ? 'R2' : 'R3';
 
-    const angle = this.intentAngle(intent, attemptLabel);
+    const angle = this.intentAngle(intent, attemptLabel, temperature);
     const kbBlock = kb.bestMatch
       ? `${kb.bestMatch.title}: ${kb.bestMatch.body}`
       : null;
@@ -100,7 +107,7 @@ export class AiRecoveryMessageService {
       kbBlock
         ? `Para facilitar, reforço o que temos na base:\n${kbBlock}`
         : 'Posso te ajudar a avançar com a melhor opção para o seu caso.',
-      this.intentCta(intent),
+      this.intentCta(intent, temperature),
     ].filter(Boolean) as string[];
 
     let body = parts.join('\n\n');
@@ -113,6 +120,8 @@ export class AiRecoveryMessageService {
       intent,
       kbSource: kb.source,
       promptVersion: AI_RECOVERY_PROMPT_VERSION,
+      score,
+      temperature,
     };
   }
 
@@ -135,7 +144,18 @@ export class AiRecoveryMessageService {
     }
   }
 
-  private intentAngle(intent: AiIntent, attempt: string): string {
+  private intentAngle(
+    intent: AiIntent,
+    attempt: string,
+    temperature: SalesTemperature | null,
+  ): string {
+    // 11E.2 — tone by temperature only (cadence unchanged).
+    if (temperature === 'HOT') {
+      return `Retomando (${attempt}) para avançarmos no que você já demonstrou interesse.`;
+    }
+    if (temperature === 'COLD') {
+      return `Passando só para manter o contato (${attempt}), sem pressão.`;
+    }
     switch (intent) {
       case AiIntent.PRICE:
         return `Passando para retomar a conversa sobre valores (${attempt}).`;
@@ -154,7 +174,16 @@ export class AiRecoveryMessageService {
     }
   }
 
-  private intentCta(intent: AiIntent): string {
+  private intentCta(
+    intent: AiIntent,
+    temperature: SalesTemperature | null,
+  ): string {
+    if (temperature === 'HOT') {
+      return 'Se fizer sentido, me diga como prefere seguir para fecharmos.';
+    }
+    if (temperature === 'COLD') {
+      return 'Se ainda tiver interesse, é só responder quando puder.';
+    }
     switch (intent) {
       case AiIntent.PRICE:
         return 'Se quiser, monto a melhor opção de preço para você agora.';
