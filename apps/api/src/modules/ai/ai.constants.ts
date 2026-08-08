@@ -119,6 +119,26 @@ export const OBJECTION_TYPES = [
   'UNKNOWN',
 ] as const;
 
+/** Fase 11E.4 — Next Best Action. */
+export const NBA_DECIDED = 'NBA_DECIDED';
+export const NBA_CHANGED = 'NBA_CHANGED';
+export const NBA_EXECUTED = 'NBA_EXECUTED';
+export const NBA_PIPELINE = 'nba-11e4';
+/** Days without inbound reply before recommending SCHEDULE_RECOVERY. */
+export const NBA_SILENCE_DAYS = 3;
+export const NBA_ACTIONS = [
+  'ASK_BUDGET',
+  'ASK_CITY',
+  'ASK_PAYMENT',
+  'ASK_PRODUCT',
+  'HANDLE_OBJECTION',
+  'OFFER_ALTERNATIVE',
+  'OFFER_CLOSE',
+  'SCHEDULE_RECOVERY',
+  'ESCALATE_HUMAN',
+  'WAIT',
+] as const;
+
 /**
  * Score weights (documented for 11E.2).
  * Positive signals add; negative subtract; final clamp 0–100.

@@ -40,6 +40,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { NbaRecommendedActionCard } from "@/features/ai/nba-card";
 
 const messageSchema = z.object({
   body: z.string().min(1, "Mensagem obrigatória").max(4096),
@@ -274,6 +275,8 @@ export default function ConversationDetailPage() {
           </div>
         }
       />
+
+      <NbaRecommendedActionCard conversationId={conversationId} />
 
       {aiSuggestion ? (
         <Card className="border-primary/20 bg-white/90">

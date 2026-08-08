@@ -20,6 +20,7 @@ import {
   LeadConversationsPanel,
   LeadFollowUpsPanel,
 } from "@/features/leads/lead-related-panels";
+import { NbaRecommendedActionCard } from "@/features/ai/nba-card";
 import { friendlyError } from "@/lib/errors";
 import { breadcrumbsForPath } from "@/lib/nav";
 import { formatDateTime, formatPhone } from "@/lib/format";
@@ -294,6 +295,7 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="space-y-6">
+            <NbaRecommendedActionCard leadId={lead.id} />
             <LeadAssignCard lead={lead} />
             <LeadStatusHistory leadId={lead.id} />
             <Card className="bg-white/90">

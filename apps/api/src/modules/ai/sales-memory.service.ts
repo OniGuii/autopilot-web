@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PrometheusMetricsService } from '../../observability/prometheus-metrics.service';
 import { AuditService } from '../audit/audit.service';
 import {
+  NBA_ACTIONS,
   OBJECTION_HISTORY_MAX,
   SALES_MEMORY_CLEARED,
   SALES_MEMORY_CREATED,
@@ -19,6 +20,7 @@ import {
 } from './ai.constants';
 import { SalesMemoryExtractorService } from './sales-memory-extractor.service';
 import type {
+  NextBestActionCode,
   ObjectionHistoryEntry,
   SalesMemory,
   SalesMemoryField,
@@ -62,6 +64,8 @@ export class SalesMemoryService {
       score: 0,
       temperature: 'COLD',
       lastScoreAt: null,
+      nextBestAction: null,
+      lastActionDecisionAt: null,
     };
   }
 
@@ -181,10 +185,12 @@ export class SalesMemoryService {
       productInterest: [...current.productInterest],
       objectionHistory: [...current.objectionHistory],
       sourceMessageIds: [...current.sourceMessageIds],
-      // 11E.2 — preserve score fields; LeadScoringService owns updates.
+      // 11E.2 / 11E.4 — preserve score + NBA fields (owned by dedicated services).
       score: current.score,
       temperature: current.temperature,
       lastScoreAt: current.lastScoreAt,
+      nextBestAction: current.nextBestAction,
+      lastActionDecisionAt: current.lastActionDecisionAt,
     };
 
     const applyScalar = <K extends SalesMemoryField>(
@@ -416,6 +422,9 @@ export class SalesMemoryService {
     if (memory.lastScoreAt != null || memory.score > 0) {
       bits.push(`score: ${memory.score} (${memory.temperature})`);
     }
+    if (memory.nextBestAction) {
+      bits.push(`nba: ${memory.nextBestAction}`);
+    }
     return bits.length ? bits.join(' · ') : null;
   }
 
@@ -465,6 +474,11 @@ export class SalesMemoryService {
           ? m.temperature
           : 'COLD',
       lastScoreAt: typeof m.lastScoreAt === 'string' ? m.lastScoreAt : null,
+      nextBestAction: this.parseNba(m.nextBestAction),
+      lastActionDecisionAt:
+        typeof m.lastActionDecisionAt === 'string'
+          ? m.lastActionDecisionAt
+          : null,
     };
   }
 
@@ -528,6 +542,13 @@ export class SalesMemoryService {
     return 'NONE';
   }
 
+  private parseNba(v: unknown): NextBestActionCode | null {
+    return typeof v === 'string' &&
+      (NBA_ACTIONS as readonly string[]).includes(v)
+      ? (v as NextBestActionCode)
+      : null;
+  }
+
   private auditSnapshot(memory: SalesMemory) {
     return {
       version: memory.version,
@@ -543,6 +564,8 @@ export class SalesMemoryService {
       score: memory.score,
       temperature: memory.temperature,
       lastScoreAt: memory.lastScoreAt,
+      nextBestAction: memory.nextBestAction,
+      lastActionDecisionAt: memory.lastActionDecisionAt,
       updatedAt: memory.updatedAt,
     };
   }

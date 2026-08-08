@@ -32,6 +32,8 @@ describe('ObjectionEngineService (11E.3)', () => {
     score: 55,
     temperature: 'WARM',
     lastScoreAt: new Date().toISOString(),
+    nextBestAction: null,
+    lastActionDecisionAt: null,
   });
 
   let memoryState: SalesMemory;

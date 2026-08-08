@@ -35,6 +35,10 @@ import { AiRecoveryService } from './ai-recovery.service';
 import { KnowledgeBaseResolver } from './knowledge-base-resolver.service';
 import { LeadScoringService } from './lead-scoring.service';
 import {
+  NextBestActionService,
+  type NbaDecisionResult,
+} from './next-best-action.service';
+import {
   ObjectionEngineService,
   type ObjectionHandleResult,
 } from './objection-engine.service';
@@ -90,6 +94,11 @@ type PipelineMetadata = {
     requiresHumanReason: string | null;
   } | null;
   requiresHumanReason?: string | null;
+  nba?: {
+    action: string;
+    reason: string;
+    replyGoal: string;
+  } | null;
 };
 
 @Injectable()
@@ -108,6 +117,7 @@ export class AiAssistPipelineService {
     @Optional() private readonly salesMemory?: SalesMemoryService,
     @Optional() private readonly leadScoring?: LeadScoringService,
     @Optional() private readonly objectionEngine?: ObjectionEngineService,
+    @Optional() private readonly nextBestAction?: NextBestActionService,
   ) {}
 
   /**
@@ -285,6 +295,31 @@ export class AiAssistPipelineService {
       suggestedBody = objection.body;
     }
 
+    // 11E.4 — Next Best Action (recommend + enrich reply; never executes actions).
+    let nba: NbaDecisionResult | null = null;
+    if (this.nextBestAction) {
+      try {
+        nba = await this.nextBestAction.decideAndPersist({
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          leadId: input.leadId,
+          intent: classification.intent,
+        });
+        const enriched = this.nextBestAction.enrichSuggestedBody(
+          suggestedBody,
+          nba,
+        );
+        suggestedBody = enriched.body;
+      } catch (err) {
+        this.logger.warn(
+          `nba decide failed company=${input.companyId} conversation=${input.conversationId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        nba = null;
+      }
+    }
+
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id: input.conversationId,
@@ -309,6 +344,13 @@ export class AiAssistPipelineService {
 
     const assignedUserId =
       conversation.assignedUserId ?? conversation.lead.ownerId ?? null;
+
+    // 11E.4 — NBA ESCALATE_HUMAN is a recommendation flag (does not change intent AUTO allowlist).
+    if (nba?.action === 'ESCALATE_HUMAN') {
+      requiresHuman = true;
+      escalationReason = escalationReason ?? nba.reason;
+      requiresHumanReason = requiresHumanReason ?? nba.reason;
+    }
 
     // Existing AUTO intent rules (11C) — unchanged.
     const neverAuto =
@@ -354,6 +396,7 @@ export class AiAssistPipelineService {
           assignedUserId,
           mode: settings.mode,
           objection,
+          nba,
         });
       }
 
@@ -404,6 +447,14 @@ export class AiAssistPipelineService {
       classification.intent === AiIntent.COMPLAINT ||
       classification.intent === AiIntent.HUMAN;
 
+    const nbaMeta = nba
+      ? {
+          action: nba.action,
+          reason: nba.reason,
+          replyGoal: nba.replyGoal,
+        }
+      : null;
+
     const metadata: PipelineMetadata = {
       source: AI_METADATA_SOURCE,
       pipeline:
@@ -429,6 +480,7 @@ export class AiAssistPipelineService {
           }
         : null,
       requiresHumanReason,
+      nba: nbaMeta,
     };
 
     const followUp = await this.prisma.$transaction(async (tx) => {
@@ -490,6 +542,24 @@ export class AiAssistPipelineService {
         });
     }
 
+    if (nba && this.nextBestAction) {
+      void this.nextBestAction
+        .markExecuted({
+          companyId: input.companyId,
+          conversationId: input.conversationId,
+          action: nba.action,
+          mode: 'ASSIST',
+          followUpId: followUp.id,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `nba markExecuted failed company=${input.companyId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+    }
+
     this.prom?.recordAiResponseGenerated();
 
     return {
@@ -518,6 +588,7 @@ export class AiAssistPipelineService {
       assignedUserId: string | null;
       mode: AiAgentMode;
       objection?: ObjectionHandleResult | null;
+      nba?: NbaDecisionResult | null;
     },
   ): Promise<AssistPipelineResult> {
     const correlationId = newCorrelationId();
@@ -548,6 +619,13 @@ export class AiAssistPipelineService {
             requiresHumanReason: ctx.objection.requiresHumanReason,
           }
         : null;
+      const nbaMeta = ctx.nba
+        ? {
+            action: ctx.nba.action,
+            reason: ctx.nba.reason,
+            replyGoal: ctx.nba.replyGoal,
+          }
+        : null;
 
       const metadata: PipelineMetadata = {
         source: AI_METADATA_SOURCE,
@@ -567,6 +645,7 @@ export class AiAssistPipelineService {
         outboundMessageId: sent.messageId,
         objection: objectionMeta,
         requiresHumanReason: null,
+        nba: nbaMeta,
       };
 
       const followUp = await this.prisma.$transaction(async (tx) => {
@@ -630,6 +709,18 @@ export class AiAssistPipelineService {
 
       this.prom?.recordAiResponseGenerated();
       this.prom?.recordAiAutoSent();
+
+      if (ctx.nba && this.nextBestAction) {
+        void this.nextBestAction
+          .markExecuted({
+            companyId: input.companyId,
+            conversationId: input.conversationId,
+            action: ctx.nba.action,
+            mode: 'AUTO',
+            followUpId: followUp.id,
+          })
+          .catch(() => undefined);
+      }
 
       return {
         skipped: false,

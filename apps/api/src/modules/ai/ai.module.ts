@@ -23,6 +23,8 @@ import { KnowledgeBaseService } from './knowledge-base.service';
 import { OpenAiClient } from './openai.client';
 import { LeadScoringController } from './lead-scoring.controller';
 import { LeadScoringService } from './lead-scoring.service';
+import { NextBestActionController } from './next-best-action.controller';
+import { NextBestActionService } from './next-best-action.service';
 import { ObjectionDetectionService } from './objection-detection.service';
 import { ObjectionEngineController } from './objection-engine.controller';
 import { ObjectionEngineService } from './objection-engine.service';
@@ -45,6 +47,7 @@ import { SalesMemoryService } from './sales-memory.service';
     SalesMemoryController,
     LeadScoringController,
     ObjectionEngineController,
+    NextBestActionController,
   ],
   providers: [
     AiService,
@@ -66,6 +69,7 @@ import { SalesMemoryService } from './sales-memory.service';
     LeadScoringService,
     ObjectionDetectionService,
     ObjectionEngineService,
+    NextBestActionService,
   ],
   exports: [
     AiService,
@@ -81,6 +85,7 @@ import { SalesMemoryService } from './sales-memory.service';
     LeadScoringService,
     ObjectionDetectionService,
     ObjectionEngineService,
+    NextBestActionService,
   ],
 })
 export class AiModule {}
