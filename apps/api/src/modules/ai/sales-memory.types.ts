@@ -10,6 +10,19 @@ export type SalesObjectionCode =
 
 export type SalesTemperature = 'COLD' | 'WARM' | 'HOT';
 
+/** Fase 11E.4 — Next Best Action catalog. */
+export type NextBestActionCode =
+  | 'ASK_BUDGET'
+  | 'ASK_CITY'
+  | 'ASK_PAYMENT'
+  | 'ASK_PRODUCT'
+  | 'HANDLE_OBJECTION'
+  | 'OFFER_ALTERNATIVE'
+  | 'OFFER_CLOSE'
+  | 'SCHEDULE_RECOVERY'
+  | 'ESCALATE_HUMAN'
+  | 'WAIT';
+
 /** Append-only history of detected objections (11E.3). */
 export type ObjectionHistoryEntry = {
   type: SalesObjectionCode;
@@ -38,6 +51,9 @@ export type SalesMemory = SalesMemorySlots & {
   score: number;
   temperature: SalesTemperature;
   lastScoreAt: string | null;
+  /** Fase 11E.4 — last decided NBA. */
+  nextBestAction: NextBestActionCode | null;
+  lastActionDecisionAt: string | null;
 };
 
 /** Partial patch from rule extractor — only set fields that were detected. */

@@ -697,6 +697,71 @@ export type AiRecoveryDashboardResponse = {
   };
 };
 
+export type NextBestActionCode =
+  | "ASK_BUDGET"
+  | "ASK_CITY"
+  | "ASK_PAYMENT"
+  | "ASK_PRODUCT"
+  | "HANDLE_OBJECTION"
+  | "OFFER_ALTERNATIVE"
+  | "OFFER_CLOSE"
+  | "SCHEDULE_RECOVERY"
+  | "ESCALATE_HUMAN"
+  | "WAIT";
+
+export type NbaRecommendation = {
+  action: NextBestActionCode;
+  reason: string;
+  replyGoal: string;
+  score: number;
+  temperature: "HOT" | "WARM" | "COLD";
+};
+
+export type NbaConversationResponse = {
+  companyId: string;
+  conversationId: string;
+  leadId: string;
+  leadStatus: LeadStatus;
+  persisted: {
+    nextBestAction: NextBestActionCode | null;
+    lastActionDecisionAt: string | null;
+  };
+  recommended: NbaRecommendation;
+  labels: Record<NextBestActionCode, string>;
+  readOnly: boolean;
+};
+
+export type NbaLeadResponse = {
+  companyId: string;
+  leadId: string;
+  leadStatus: LeadStatus;
+  conversationId: string | null;
+  recommended: NbaRecommendation | null;
+  persisted?: {
+    nextBestAction: NextBestActionCode | null;
+    lastActionDecisionAt: string | null;
+  };
+  labels: Record<NextBestActionCode, string>;
+  readOnly: boolean;
+};
+
+export type NbaDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  topActions: Array<{
+    action: NextBestActionCode;
+    count: number;
+    conversions: number;
+    temperatures: { HOT: number; WARM: number; COLD: number };
+  }>;
+  conversionsByAction: Record<NextBestActionCode, number>;
+  temperaturesByAction: Record<
+    NextBestActionCode,
+    { HOT: number; WARM: number; COLD: number }
+  >;
+  conversationsWithNba: number;
+};
+
 export type KnowledgeBaseEntry = {
   id: string;
   companyId: string;

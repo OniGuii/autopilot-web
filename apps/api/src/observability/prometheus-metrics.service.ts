@@ -81,6 +81,10 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly objectionDetectedTotal: Counter<string>;
   readonly objectionHandledTotal: Counter<string>;
   readonly objectionEscalatedTotal: Counter<string>;
+  /** Fase 11E.4 — Next Best Action. */
+  readonly nbaDecidedTotal: Counter<string>;
+  readonly nbaChangedTotal: Counter<string>;
+  readonly nbaExecutedTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -365,6 +369,24 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       labelNames: ['type'],
       registers: [this.registry],
     });
+    this.nbaDecidedTotal = new Counter({
+      name: 'nba_decided_total',
+      help: 'Next Best Action decisions (Fase 11E.4)',
+      labelNames: ['action'],
+      registers: [this.registry],
+    });
+    this.nbaChangedTotal = new Counter({
+      name: 'nba_changed_total',
+      help: 'Next Best Action changes vs previous (Fase 11E.4)',
+      labelNames: ['action'],
+      registers: [this.registry],
+    });
+    this.nbaExecutedTotal = new Counter({
+      name: 'nba_executed_total',
+      help: 'Next Best Action applied to reply enrichment (Fase 11E.4)',
+      labelNames: ['action'],
+      registers: [this.registry],
+    });
 
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
@@ -617,6 +639,18 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordObjectionEscalated(type: string): void {
     this.objectionEscalatedTotal.inc({ type: type || 'UNKNOWN' });
+  }
+
+  recordNbaDecided(action: string): void {
+    this.nbaDecidedTotal.inc({ action: action || 'WAIT' });
+  }
+
+  recordNbaChanged(action: string): void {
+    this.nbaChangedTotal.inc({ action: action || 'WAIT' });
+  }
+
+  recordNbaExecuted(action: string): void {
+    this.nbaExecutedTotal.inc({ action: action || 'WAIT' });
   }
 
   recordWhatsappSend(ok: boolean): void {

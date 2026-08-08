@@ -85,6 +85,10 @@ export const endpoints = {
     classify: "/api/ai/classify",
     recoverySettings: "/api/ai/recovery/settings",
     recoveryDashboard: "/api/ai/recovery/dashboard",
+    nbaDashboard: "/api/ai/nba/dashboard",
+    nbaConversation: (conversationId: string) =>
+      `/api/ai/nba/conversation/${conversationId}`,
+    nbaLead: (leadId: string) => `/api/ai/nba/lead/${leadId}`,
   },
   knowledgeBase: {
     list: "/api/knowledge-base",

@@ -10,6 +10,9 @@ import type {
   KnowledgeBaseEntry,
   KnowledgeBaseKind,
   KnowledgeBaseListResponse,
+  NbaConversationResponse,
+  NbaDashboardResponse,
+  NbaLeadResponse,
 } from "@/lib/api/types";
 
 export function fetchAiSettings() {
@@ -121,4 +124,18 @@ export function fetchRecoveryDashboard() {
   return apiRequest<AiRecoveryDashboardResponse>(
     endpoints.ai.recoveryDashboard,
   );
+}
+
+export function fetchNbaDashboard() {
+  return apiRequest<NbaDashboardResponse>(endpoints.ai.nbaDashboard);
+}
+
+export function fetchNbaForConversation(conversationId: string) {
+  return apiRequest<NbaConversationResponse>(
+    endpoints.ai.nbaConversation(conversationId),
+  );
+}
+
+export function fetchNbaForLead(leadId: string) {
+  return apiRequest<NbaLeadResponse>(endpoints.ai.nbaLead(leadId));
 }
