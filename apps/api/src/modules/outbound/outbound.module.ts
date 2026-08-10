@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { OutboundImportController } from './outbound-import.controller';
+import { OutboundImportService } from './outbound-import.service';
 import { OutboundProtectionController } from './outbound-protection.controller';
 import { OutboundProtectionDashboardService } from './outbound-protection-dashboard.service';
 import { OutboundProtectionService } from './outbound-protection.service';
@@ -9,17 +11,19 @@ import { OutboundSuppressService } from './outbound-suppress.service';
 
 @Module({
   imports: [AuthModule, AuditModule],
-  controllers: [OutboundProtectionController],
+  controllers: [OutboundProtectionController, OutboundImportController],
   providers: [
     OutboundProtectionSettingsService,
     OutboundSuppressService,
     OutboundProtectionService,
     OutboundProtectionDashboardService,
+    OutboundImportService,
   ],
   exports: [
     OutboundProtectionService,
     OutboundProtectionSettingsService,
     OutboundSuppressService,
+    OutboundImportService,
   ],
 })
 export class OutboundModule {}

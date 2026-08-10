@@ -23,6 +23,7 @@ import {
   Gauge,
   RotateCcw,
   Shield,
+  Upload,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessNav, type NavItemId } from "@/lib/auth/rbac";
@@ -78,6 +79,13 @@ const NAV: NavItem[] = [
     href: "/outbound/protection",
     label: "Outbound Protection",
     icon: Shield,
+    group: "admin",
+  },
+  {
+    id: "outbound-import",
+    href: "/outbound/import",
+    label: "Lead Import",
+    icon: Upload,
     group: "admin",
   },
   { id: "exports", href: "/exports", label: "Exportações", icon: Download, group: "admin" },

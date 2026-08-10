@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   "/ai/knowledge-base": "Base de conhecimento",
   "/ai/recovery": "Recovery",
   "/outbound/protection": "Outbound Protection",
+  "/outbound/import": "Lead Import",
   "/exports": "Exportações",
   "/diagnostics": "Diagnósticos",
   "/setup": "Primeiros passos",
@@ -93,6 +94,9 @@ export function breadcrumbsForPath(pathname: string): Crumb[] {
   }
   if (pathname === "/outbound/protection") {
     return [home, { label: "Outbound Protection" }];
+  }
+  if (pathname === "/outbound/import") {
+    return [home, { label: "Lead Import" }];
   }
   if (pathname === "/exports") return [home, { label: "Exportações" }];
   if (pathname === "/diagnostics") return [home, { label: "Diagnósticos" }];
