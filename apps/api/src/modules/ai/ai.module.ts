@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { QueueModule } from '../async/queue.module';
+import { OutboundModule } from '../outbound/outbound.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AiAssistPipelineService } from './ai-assist-pipeline.service';
 import { AiAutoGuardrailsService } from './ai-auto-guardrails.service';
@@ -39,6 +40,7 @@ import { SalesMemoryService } from './sales-memory.service';
     AuthModule,
     AuditModule,
     QueueModule,
+    OutboundModule,
     forwardRef(() => WhatsappModule),
   ],
   controllers: [

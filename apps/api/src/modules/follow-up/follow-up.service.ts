@@ -609,6 +609,14 @@ export class FollowUpService {
         followUpId,
       });
       if (!prep.ok) {
+        // Outbound Protection temporary blocks (caps/cooldown/hours).
+        if (prep.reason === 'OUTBOUND_PROTECTED') {
+          return {
+            outcome: 'skipped_not_due',
+            status: FollowUpStatus.SCHEDULED,
+            correlationId,
+          };
+        }
         return {
           outcome: 'skipped_terminal',
           status: FollowUpStatus.CANCELLED,

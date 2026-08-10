@@ -90,6 +90,14 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly purchaseIntentChangedTotal: Counter<string>;
   readonly purchaseIntentHighTotal: Counter<string>;
   readonly purchaseIntentVeryHighTotal: Counter<string>;
+  /** Outbound V1.1 — Protection Layer. */
+  readonly outboundProtectionAllowedTotal: Counter<string>;
+  readonly outboundProtectionBlockedTotal: Counter<string>;
+  readonly outboundSuppressAddedTotal: Counter<string>;
+  readonly outboundSuppressRemovedTotal: Counter<string>;
+  readonly outboundOptOutTotal: Counter<string>;
+  readonly outboundProactiveRemainingDaily: Gauge<string>;
+  readonly outboundProactiveRemainingHourly: Gauge<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -415,6 +423,44 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       registers: [this.registry],
     });
 
+    this.outboundProtectionAllowedTotal = new Counter({
+      name: 'outbound_protection_allowed_total',
+      help: 'Outbound Protection allowed proactive evaluations (V1.1)',
+      labelNames: ['source'],
+      registers: [this.registry],
+    });
+    this.outboundProtectionBlockedTotal = new Counter({
+      name: 'outbound_protection_blocked_total',
+      help: 'Outbound Protection blocked proactive evaluations (V1.1)',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    this.outboundSuppressAddedTotal = new Counter({
+      name: 'outbound_suppress_added_total',
+      help: 'Outbound suppress entries added/reactivated (V1.1)',
+      registers: [this.registry],
+    });
+    this.outboundSuppressRemovedTotal = new Counter({
+      name: 'outbound_suppress_removed_total',
+      help: 'Outbound suppress entries deactivated (V1.1)',
+      registers: [this.registry],
+    });
+    this.outboundOptOutTotal = new Counter({
+      name: 'outbound_opt_out_total',
+      help: 'Outbound keyword opt-outs (V1.1)',
+      registers: [this.registry],
+    });
+    this.outboundProactiveRemainingDaily = new Gauge({
+      name: 'outbound_proactive_remaining_daily',
+      help: 'Remaining daily proactive outbound capacity (last evaluate)',
+      registers: [this.registry],
+    });
+    this.outboundProactiveRemainingHourly = new Gauge({
+      name: 'outbound_proactive_remaining_hourly',
+      help: 'Remaining hourly proactive outbound capacity (last evaluate)',
+      registers: [this.registry],
+    });
+
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
       help: 'WhatsApp outbound send attempts',
@@ -694,6 +740,38 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordPurchaseIntentVeryHigh(): void {
     this.purchaseIntentVeryHighTotal.inc();
+  }
+
+  recordOutboundProtectionAllowed(source: string): void {
+    this.outboundProtectionAllowedTotal.inc({
+      source: source || 'unknown',
+    });
+  }
+
+  recordOutboundProtectionBlocked(reason: string): void {
+    this.outboundProtectionBlockedTotal.inc({
+      reason: reason || 'unknown',
+    });
+  }
+
+  recordOutboundSuppressAdded(): void {
+    this.outboundSuppressAddedTotal.inc();
+  }
+
+  recordOutboundSuppressRemoved(): void {
+    this.outboundSuppressRemovedTotal.inc();
+  }
+
+  recordOutboundOptOut(): void {
+    this.outboundOptOutTotal.inc();
+  }
+
+  setOutboundProactiveRemainingDaily(n: number): void {
+    this.outboundProactiveRemainingDaily.set(Math.max(0, n));
+  }
+
+  setOutboundProactiveRemainingHourly(n: number): void {
+    this.outboundProactiveRemainingHourly.set(Math.max(0, n));
   }
 
   recordWhatsappSend(ok: boolean): void {

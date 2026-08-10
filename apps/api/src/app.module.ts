@@ -19,6 +19,7 @@ import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { OpsModule } from './modules/ops/ops.module';
+import { OutboundModule } from './modules/outbound/outbound.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { SetupModule } from './modules/setup/setup.module';
 import { UsersModule } from './modules/users/users.module';
@@ -61,6 +62,7 @@ const workersInApi = (process.env.ASYNC_WORKERS_IN_API ?? 'true') === 'true';
     ConversationsModule,
     WhatsappModule,
     AiModule,
+    OutboundModule,
     FollowUpModule,
     DashboardModule,
     PipelineModule,
