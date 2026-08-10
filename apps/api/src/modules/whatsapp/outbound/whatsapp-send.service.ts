@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   ConversationStatus,
+  LeadStatus,
   MessageDirection,
   Prisma,
   WhatsAppConnectionStatus,
@@ -21,6 +22,7 @@ import { PrometheusMetricsService } from '../../../observability/prometheus-metr
 import { OutboundSendProducer } from '../../async/producers/outbound-send.producer';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/jwt-payload';
+import { OUTBOUND_FIRST_TOUCH_MESSAGE_SOURCE } from '../../outbound/outbound-first-touch.constants';
 import { OutboundProtectionService } from '../../outbound/outbound-protection.service';
 import { isProactiveOutboundSource } from '../../outbound/outbound.constants';
 import { newCorrelationId } from '../correlation';
@@ -430,7 +432,7 @@ export class WhatsappSendService {
   ): Promise<{
     companyId: string;
     actor: CompanyActor;
-    lead: { id: string; phone: string };
+    lead: { id: string; phone: string; status: LeadStatus };
     conversation: { id: string; leadId: string };
     instance: {
       id: string;
@@ -566,7 +568,7 @@ export class WhatsappSendService {
     prepared: {
       companyId: string;
       actor: CompanyActor;
-      lead: { id: string; phone: string };
+      lead: { id: string; phone: string; status?: LeadStatus };
       conversation: { id: string };
       instance: { evolutionInstanceName: string };
       pending: { id: string };
@@ -656,13 +658,30 @@ export class WhatsappSendService {
         data: { lastMessageAt: now },
       });
 
+      const promoteFirstTouch =
+        source === OUTBOUND_FIRST_TOUCH_MESSAGE_SOURCE &&
+        lead.status === LeadStatus.NEW;
+
       await tx.lead.update({
         where: { id: lead.id },
         data: {
           lastOutboundAt: now,
           lastContactAt: now,
+          ...(promoteFirstTouch ? { status: LeadStatus.CONTACTED } : {}),
         },
       });
+
+      if (promoteFirstTouch) {
+        await tx.leadStatusTransition.create({
+          data: {
+            companyId,
+            leadId: lead.id,
+            fromStatus: LeadStatus.NEW,
+            toStatus: LeadStatus.CONTACTED,
+            changedByUserId: actor.sub,
+          },
+        });
+      }
 
       await this.audit.write(tx, {
         companyId,
@@ -684,6 +703,9 @@ export class WhatsappSendService {
           body: body.slice(0, AUDIT_BODY_MAX),
           source,
           correlationId,
+          ...(promoteFirstTouch
+            ? { leadStatus: LeadStatus.CONTACTED }
+            : {}),
         },
         ip: meta?.ip,
         userAgent: meta?.userAgent,

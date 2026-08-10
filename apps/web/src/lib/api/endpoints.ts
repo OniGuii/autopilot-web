@@ -116,5 +116,13 @@ export const endpoints = {
       `/api/outbound/import/batches/${id}/validate`,
     importCommit: (id: string) => `/api/outbound/import/batches/${id}/commit`,
     importCancel: (id: string) => `/api/outbound/import/batches/${id}/cancel`,
+    firstTouchSettings: "/api/outbound/first-touch/settings",
+    firstTouchDashboard: "/api/outbound/first-touch/dashboard",
+    firstTouchFollowUps: "/api/outbound/first-touch/follow-ups",
+    firstTouchGenerate: "/api/outbound/first-touch/generate",
+    firstTouchApprove: (id: string) =>
+      `/api/outbound/first-touch/follow-ups/${id}/approve`,
+    firstTouchReject: (id: string) =>
+      `/api/outbound/first-touch/follow-ups/${id}/reject`,
   },
 } as const;

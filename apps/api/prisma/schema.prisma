@@ -182,6 +182,7 @@ model Company {
   outboundProtectionSettings CompanyOutboundProtectionSettings?
   outboundSuppressEntries    OutboundSuppressEntry[]
   leadImportBatches          LeadImportBatch[]
+  firstTouchSettings         CompanyFirstTouchSettings?
 
   @@index([status])
   @@index([slug])
@@ -761,4 +762,25 @@ model LeadImportBatch {
   @@index([companyId, createdAt])
   @@index([companyId, fileHash])
   @@map("lead_import_batches")
+}
+
+/// Outbound V1.3 — First Touch Engine policy per company (1:1).
+model CompanyFirstTouchSettings {
+  id                 String    @id @default(uuid()) @db.Uuid
+  companyId          String    @unique @map("company_id") @db.Uuid
+  /// OFF | HUMAN_APPROVE | AUTO_SEND
+  mode               String    @default("OFF") @db.VarChar(32)
+  /// financeira | imobiliaria | solar | ecommerce | generic
+  verticalPlaybook   String    @default("generic") @map("vertical_playbook") @db.VarChar(32)
+  maxBatchSize       Int       @default(50) @map("max_batch_size")
+  requireImportBatch Boolean   @default(false) @map("require_import_batch")
+  enableKbGrounding  Boolean   @default(true) @map("enable_kb_grounding")
+  enableMemorySeed   Boolean   @default(true) @map("enable_memory_seed")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("company_first_touch_settings")
 }
