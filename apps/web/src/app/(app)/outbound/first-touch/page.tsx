@@ -159,7 +159,8 @@ function FirstTouchContent() {
     return (
       <ErrorPanel
         title="Erro ao carregar First Touch"
-        error={settingsQuery.error}
+        description={friendlyError(settingsQuery.error, "Tente novamente.")}
+        onRetry={() => void settingsQuery.refetch()}
       />
     );
   }
@@ -314,7 +315,11 @@ function FirstTouchContent() {
           {listQuery.isLoading ? (
             <LoadingBlock />
           ) : listQuery.isError ? (
-            <ErrorPanel title="Erro na lista" error={listQuery.error} />
+            <ErrorPanel
+              title="Erro na lista"
+              description={friendlyError(listQuery.error, "Tente novamente.")}
+              onRetry={() => void listQuery.refetch()}
+            />
           ) : (listQuery.data?.items.length ?? 0) === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum D0 gerado ainda.

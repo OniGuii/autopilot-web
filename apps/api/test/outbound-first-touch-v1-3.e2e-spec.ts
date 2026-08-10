@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { FollowUpStatus, LeadStatus } from '@prisma/client';
+import { FollowUpStatus } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -53,7 +53,6 @@ describe('Outbound First Touch V1.3 (e2e)', () => {
   });
 
   it('settings OFF → HUMAN_APPROVE → generate → approve', async () => {
-    const prisma = app.get(PrismaService);
     const suffix = String(Date.now()).slice(-6);
     const phone = `551197${suffix}`;
 
@@ -79,20 +78,51 @@ describe('Outbound First Touch V1.3 (e2e)', () => {
       })
       .expect(200);
 
-    const lead = await prisma.lead.create({
-      data: {
-        companyId,
-        phone,
-        name: `FT Ana ${suffix}`,
-        status: LeadStatus.NEW,
-        source: 'OUTBOUND_IMPORT',
-        metadata: {
-          product: 'consórcio',
-          city: 'SP',
-          importBatchId: '00000000-0000-4000-8000-000000000099',
+    // Create via import commit so metadata.importBatchId is present (V1.2 path).
+    const pasteRes = await request(app.getHttpServer())
+      .post('/api/outbound/import/batches/paste')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        text: `Nome,Telefone,Produto,Cidade\nFT Ana ${suffix},${phone},consórcio,SP\n`,
+        sourceDefault: 'OUTBOUND_IMPORT',
+      })
+      .expect(201);
+    const batchId = pasteRes.body.id as string;
+
+    await request(app.getHttpServer())
+      .patch(`/api/outbound/import/batches/${batchId}/mapping`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        columnMapping: {
+          phone: 'Telefone',
+          name: 'Nome',
+          product: 'Produto',
+          city: 'Cidade',
         },
-      },
-    });
+      })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/api/outbound/import/batches/${batchId}/validate`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+
+    const commitRes = await request(app.getHttpServer())
+      .post(`/api/outbound/import/batches/${batchId}/commit`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+    expect(commitRes.body.report.created).toBeGreaterThanOrEqual(1);
+
+    const leadsRes = await request(app.getHttpServer())
+      .get('/api/leads')
+      .query({ search: phone.slice(-8), limit: 50 })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const lead = (
+      leadsRes.body.data as Array<{ id: string; phone: string }>
+    ).find((l) => l.phone === phone || l.phone.endsWith(phone.slice(-8)));
+    expect(lead?.id).toBeTruthy();
 
     const offRes = await request(app.getHttpServer())
       .patch('/api/outbound/first-touch/settings')
@@ -104,7 +134,7 @@ describe('Outbound First Touch V1.3 (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/outbound/first-touch/generate')
       .set('Authorization', `Bearer ${token}`)
-      .send({ leadIds: [lead.id] })
+      .send({ leadIds: [lead!.id] })
       .expect(409);
 
     await request(app.getHttpServer())
@@ -116,13 +146,13 @@ describe('Outbound First Touch V1.3 (e2e)', () => {
     const genRes = await request(app.getHttpServer())
       .post('/api/outbound/first-touch/generate')
       .set('Authorization', `Bearer ${token}`)
-      .send({ leadIds: [lead.id], limit: 1 })
+      .send({ leadIds: [lead!.id], limit: 1 })
       .expect(201);
 
     expect(genRes.body.created).toBe(1);
     expect(genRes.body.items[0]).toEqual(
       expect.objectContaining({
-        leadId: lead.id,
+        leadId: lead!.id,
         status: FollowUpStatus.SUGGESTED,
         mode: 'HUMAN_APPROVE',
       }),
