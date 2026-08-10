@@ -31,6 +31,7 @@ export const SOFT_DELETE_MODELS = [
   'companyRecoverySettings',
   'companyOutboundProtectionSettings',
   'outboundSuppressEntry',
+  'leadImportBatch',
 ] as const;
 
 export type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];

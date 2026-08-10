@@ -105,5 +105,16 @@ export const endpoints = {
     protectionDashboard: "/api/outbound/protection/dashboard",
     suppress: "/api/outbound/protection/suppress",
     suppressById: (id: string) => `/api/outbound/protection/suppress/${id}`,
+    importDashboard: "/api/outbound/import/dashboard",
+    importBatches: "/api/outbound/import/batches",
+    importUpload: "/api/outbound/import/batches/upload",
+    importPaste: "/api/outbound/import/batches/paste",
+    importBatch: (id: string) => `/api/outbound/import/batches/${id}`,
+    importMapping: (id: string) =>
+      `/api/outbound/import/batches/${id}/mapping`,
+    importValidate: (id: string) =>
+      `/api/outbound/import/batches/${id}/validate`,
+    importCommit: (id: string) => `/api/outbound/import/batches/${id}/commit`,
+    importCancel: (id: string) => `/api/outbound/import/batches/${id}/cancel`,
   },
 } as const;

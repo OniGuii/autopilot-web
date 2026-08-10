@@ -98,6 +98,13 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly outboundOptOutTotal: Counter<string>;
   readonly outboundProactiveRemainingDaily: Gauge<string>;
   readonly outboundProactiveRemainingHourly: Gauge<string>;
+  /** Outbound V1.2 — Lead Import. */
+  readonly outboundImportUploadedTotal: Counter<string>;
+  readonly outboundImportValidatedTotal: Counter<string>;
+  readonly outboundImportCommittedTotal: Counter<string>;
+  readonly outboundImportSkippedTotal: Counter<string>;
+  readonly outboundImportFailedTotal: Counter<string>;
+  readonly outboundImportRowsTotal: Counter<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -461,6 +468,38 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       registers: [this.registry],
     });
 
+    this.outboundImportUploadedTotal = new Counter({
+      name: 'outbound_import_uploaded_total',
+      help: 'Lead import batches uploaded (V1.2)',
+      registers: [this.registry],
+    });
+    this.outboundImportValidatedTotal = new Counter({
+      name: 'outbound_import_validated_total',
+      help: 'Lead import validations (V1.2)',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.outboundImportCommittedTotal = new Counter({
+      name: 'outbound_import_committed_total',
+      help: 'Leads created via import commit (V1.2)',
+      registers: [this.registry],
+    });
+    this.outboundImportSkippedTotal = new Counter({
+      name: 'outbound_import_skipped_total',
+      help: 'Import rows skipped (duplicate/suppress) (V1.2)',
+      registers: [this.registry],
+    });
+    this.outboundImportFailedTotal = new Counter({
+      name: 'outbound_import_failed_total',
+      help: 'Lead import commit failures (V1.2)',
+      registers: [this.registry],
+    });
+    this.outboundImportRowsTotal = new Counter({
+      name: 'outbound_import_rows_total',
+      help: 'Rows staged in lead import uploads (V1.2)',
+      registers: [this.registry],
+    });
+
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
       help: 'WhatsApp outbound send attempts',
@@ -772,6 +811,32 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   setOutboundProactiveRemainingHourly(n: number): void {
     this.outboundProactiveRemainingHourly.set(Math.max(0, n));
+  }
+
+  recordOutboundImportUploaded(rows: number): void {
+    this.outboundImportUploadedTotal.inc();
+    if (rows > 0) this.outboundImportRowsTotal.inc(rows);
+  }
+
+  recordOutboundImportValidated(valid: number, invalid: number): void {
+    if (valid > 0) {
+      this.outboundImportValidatedTotal.inc({ result: 'valid' }, valid);
+    }
+    if (invalid > 0) {
+      this.outboundImportValidatedTotal.inc({ result: 'invalid' }, invalid);
+    }
+  }
+
+  recordOutboundImportCommitted(n: number): void {
+    if (n > 0) this.outboundImportCommittedTotal.inc(n);
+  }
+
+  recordOutboundImportSkipped(n: number): void {
+    if (n > 0) this.outboundImportSkippedTotal.inc(n);
+  }
+
+  recordOutboundImportFailed(): void {
+    this.outboundImportFailedTotal.inc();
   }
 
   recordWhatsappSend(ok: boolean): void {

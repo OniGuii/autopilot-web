@@ -761,6 +761,71 @@ export type OutboundSuppressListResponse = {
   totalPages: number;
 };
 
+export type LeadImportReport = {
+  total: number;
+  valid: number;
+  invalid: number;
+  duplicates: number;
+  suppressed: number;
+  ignored: number;
+  created: number;
+  errors: Array<{
+    row: number;
+    phone?: string;
+    code: string;
+    message: string;
+  }>;
+};
+
+export type LeadImportBatch = {
+  id: string;
+  companyId: string;
+  createdByUserId: string;
+  status: string;
+  inputKind: string;
+  filename: string | null;
+  contentType: string | null;
+  fileHash: string | null;
+  byteSize: number | null;
+  rowCount: number;
+  columnHeaders: string[];
+  columnMapping: Record<string, string | null> | null;
+  guessedMapping: Record<string, string>;
+  sourceDefault: string;
+  dedupeMode: string;
+  previewSample: Record<string, string>[];
+  report: LeadImportReport | null;
+  errorMessage: string | null;
+  committedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LeadImportDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  windowDays: number;
+  metrics: {
+    batches: number;
+    imported: number;
+    valid: number;
+    invalid: number;
+    duplicates: number;
+    suppressed: number;
+    ignored: number;
+    created: number;
+    completedBatches: number;
+  };
+};
+
+export type LeadImportBatchListResponse = {
+  items: LeadImportBatch[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type NextBestActionCode =
   | "ASK_BUDGET"
   | "ASK_CITY"

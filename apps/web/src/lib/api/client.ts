@@ -74,8 +74,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { body, auth = true, skipRefresh = false, headers, ...rest } = options;
   const requestHeaders = new Headers(headers);
+  const isFormData =
+    typeof FormData !== "undefined" && body instanceof FormData;
 
-  if (body !== undefined) {
+  // FormData must set its own multipart boundary — do not force JSON.
+  if (body !== undefined && !isFormData) {
     requestHeaders.set("Content-Type", "application/json");
   }
 
@@ -89,7 +92,12 @@ export async function apiRequest<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     ...rest,
     headers: requestHeaders,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body:
+      body === undefined
+        ? undefined
+        : isFormData
+          ? (body as FormData)
+          : JSON.stringify(body),
   });
 
   if (response.status === 401 && auth && !skipRefresh) {

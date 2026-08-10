@@ -181,6 +181,7 @@ model Company {
   recoverySettings      CompanyRecoverySettings?
   outboundProtectionSettings CompanyOutboundProtectionSettings?
   outboundSuppressEntries    OutboundSuppressEntry[]
+  leadImportBatches          LeadImportBatch[]
 
   @@index([status])
   @@index([slug])
@@ -212,6 +213,7 @@ model User {
   leadNotes                    LeadNote[]             @relation("LeadNoteAuthor")
   leadActivities               LeadActivity[]         @relation("LeadActivityAssignee")
   leadStatusTransitionsChanged LeadStatusTransition[] @relation("LeadStatusChangedBy")
+  leadImportBatchesCreated     LeadImportBatch[]      @relation("LeadImportBatchCreator")
 
   @@index([status])
   @@map("users")
@@ -716,4 +718,47 @@ model OutboundSuppressEntry {
   @@index([companyId, active])
   @@index([companyId, leadId])
   @@map("outbound_suppress_entries")
+}
+
+/// Outbound V1.2 — Lead Import batch (staged rows JSON; leads commit to Lead).
+model LeadImportBatch {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  /// UPLOADED | MAPPING | VALIDATED | COMMITTING | COMPLETED | FAILED | CANCELLED
+  status          String    @default("UPLOADED") @db.VarChar(32)
+  /// CSV | XLSX | PASTE
+  inputKind       String    @map("input_kind") @db.VarChar(16)
+  filename        String?   @db.VarChar(255)
+  contentType     String?   @map("content_type") @db.VarChar(120)
+  fileHash        String?   @map("file_hash") @db.VarChar(64)
+  byteSize        Int?      @map("byte_size")
+  rowCount        Int       @default(0) @map("row_count")
+  /// Detected header labels
+  columnHeaders   Json      @default("[]") @map("column_headers")
+  /// Mapping: phone/name/email/externalId/source + extras[{header,key}]
+  columnMapping   Json?     @map("column_mapping")
+  /// Default Lead.source when column unmapped
+  sourceDefault   String    @default("OUTBOUND_IMPORT") @map("source_default") @db.VarChar(32)
+  /// skip | reject (duplicate phones in DB / file)
+  dedupeMode      String    @default("skip") @map("dedupe_mode") @db.VarChar(16)
+  /// Full staged matrix { headers, rows: string[][] }
+  stagedData      Json      @map("staged_data")
+  /// First N rows for UI preview
+  previewSample   Json      @default("[]") @map("preview_sample")
+  /// Validation/commit report counts + per-row errors
+  report          Json?
+  errorMessage    String?   @map("error_message") @db.VarChar(1000)
+  committedAt     DateTime? @map("committed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation("LeadImportBatchCreator", fields: [createdByUserId], references: [id])
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([companyId, fileHash])
+  @@map("lead_import_batches")
 }

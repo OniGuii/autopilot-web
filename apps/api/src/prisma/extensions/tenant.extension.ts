@@ -27,6 +27,7 @@ export const TENANT_SCOPED_MODELS = [
   'companyRecoverySettings',
   'companyOutboundProtectionSettings',
   'outboundSuppressEntry',
+  'leadImportBatch',
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];
