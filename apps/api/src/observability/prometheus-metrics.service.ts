@@ -105,6 +105,11 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly outboundImportSkippedTotal: Counter<string>;
   readonly outboundImportFailedTotal: Counter<string>;
   readonly outboundImportRowsTotal: Counter<string>;
+  /** Outbound V1.3 — First Touch. */
+  readonly firstTouchCreatedTotal: Counter<string>;
+  readonly firstTouchSentTotal: Counter<string>;
+  readonly firstTouchFailedTotal: Counter<string>;
+  readonly firstTouchReplyRate: Gauge<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -500,6 +505,27 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       registers: [this.registry],
     });
 
+    this.firstTouchCreatedTotal = new Counter({
+      name: 'first_touch_created_total',
+      help: 'First Touch (D0) follow-ups created (V1.3)',
+      registers: [this.registry],
+    });
+    this.firstTouchSentTotal = new Counter({
+      name: 'first_touch_sent_total',
+      help: 'First Touch (D0) messages sent (V1.3)',
+      registers: [this.registry],
+    });
+    this.firstTouchFailedTotal = new Counter({
+      name: 'first_touch_failed_total',
+      help: 'First Touch (D0) send failures (V1.3)',
+      registers: [this.registry],
+    });
+    this.firstTouchReplyRate = new Gauge({
+      name: 'first_touch_reply_rate',
+      help: 'First Touch reply rate (responded/sent) from last dashboard compute (V1.3)',
+      registers: [this.registry],
+    });
+
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
       help: 'WhatsApp outbound send attempts',
@@ -837,6 +863,22 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   recordOutboundImportFailed(): void {
     this.outboundImportFailedTotal.inc();
+  }
+
+  recordFirstTouchCreated(): void {
+    this.firstTouchCreatedTotal.inc();
+  }
+
+  recordFirstTouchSent(): void {
+    this.firstTouchSentTotal.inc();
+  }
+
+  recordFirstTouchFailed(): void {
+    this.firstTouchFailedTotal.inc();
+  }
+
+  setFirstTouchReplyRate(rate: number): void {
+    this.firstTouchReplyRate.set(Math.max(0, Math.min(1, rate)));
   }
 
   recordWhatsappSend(ok: boolean): void {

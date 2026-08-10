@@ -826,6 +826,71 @@ export type LeadImportBatchListResponse = {
   totalPages: number;
 };
 
+export type FirstTouchMode = "OFF" | "HUMAN_APPROVE" | "AUTO_SEND";
+
+export type FirstTouchSettings = {
+  id: string;
+  companyId: string;
+  mode: FirstTouchMode | string;
+  verticalPlaybook: string;
+  maxBatchSize: number;
+  requireImportBatch: boolean;
+  enableKbGrounding: boolean;
+  enableMemorySeed: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FirstTouchDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  windowDays: number;
+  mode: string;
+  verticalPlaybook: string;
+  metrics: {
+    eligible: number;
+    generated: number;
+    approved: number;
+    sent: number;
+    delivered: number;
+    responded: number;
+    failed: number;
+    replyRate: number;
+  };
+};
+
+export type FirstTouchFollowUpItem = {
+  id: string;
+  leadId: string;
+  leadName: string | null;
+  leadPhone: string | null;
+  leadStatus: string | null;
+  conversationId: string | null;
+  status: string;
+  mode: string;
+  body: string | null;
+  scheduledAt: string | null;
+  executedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FirstTouchFollowUpListResponse = {
+  items: FirstTouchFollowUpItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type FirstTouchGenerateResponse = {
+  mode: string;
+  created: number;
+  skipped: number;
+  items: FirstTouchFollowUpItem[];
+  skippedReasons: Record<string, number | boolean>;
+};
+
 export type NextBestActionCode =
   | "ASK_BUDGET"
   | "ASK_CITY"

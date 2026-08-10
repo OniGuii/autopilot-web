@@ -1,6 +1,10 @@
 import { apiRequest } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import type {
+  FirstTouchDashboardResponse,
+  FirstTouchFollowUpListResponse,
+  FirstTouchGenerateResponse,
+  FirstTouchSettings,
   LeadImportBatch,
   LeadImportBatchListResponse,
   LeadImportDashboardResponse,
@@ -8,6 +12,7 @@ import type {
   OutboundProtectionSettings,
   OutboundSuppressListResponse,
   OutboundSuppressEntry,
+  FirstTouchFollowUpItem,
 } from "@/lib/api/types";
 
 export function fetchOutboundProtectionSettings() {
@@ -150,4 +155,70 @@ export function cancelLeadImport(id: string) {
   return apiRequest<LeadImportBatch>(endpoints.outbound.importCancel(id), {
     method: "POST",
   });
+}
+
+export function fetchFirstTouchSettings() {
+  return apiRequest<FirstTouchSettings>(endpoints.outbound.firstTouchSettings);
+}
+
+export function updateFirstTouchSettings(
+  input: Partial<{
+    mode: string;
+    verticalPlaybook: string;
+    maxBatchSize: number;
+    requireImportBatch: boolean;
+    enableKbGrounding: boolean;
+    enableMemorySeed: boolean;
+  }>,
+) {
+  return apiRequest<FirstTouchSettings>(endpoints.outbound.firstTouchSettings, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function fetchFirstTouchDashboard() {
+  return apiRequest<FirstTouchDashboardResponse>(
+    endpoints.outbound.firstTouchDashboard,
+  );
+}
+
+export function listFirstTouchFollowUps(params?: {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.status) sp.set("status", params.status);
+  if (params?.page) sp.set("page", String(params.page));
+  if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
+  const q = sp.toString();
+  return apiRequest<FirstTouchFollowUpListResponse>(
+    `${endpoints.outbound.firstTouchFollowUps}${q ? `?${q}` : ""}`,
+  );
+}
+
+export function generateFirstTouch(input?: {
+  leadIds?: string[];
+  importBatchId?: string;
+  limit?: number;
+}) {
+  return apiRequest<FirstTouchGenerateResponse>(
+    endpoints.outbound.firstTouchGenerate,
+    { method: "POST", body: input ?? {} },
+  );
+}
+
+export function approveFirstTouch(id: string) {
+  return apiRequest<FirstTouchFollowUpItem>(
+    endpoints.outbound.firstTouchApprove(id),
+    { method: "POST" },
+  );
+}
+
+export function rejectFirstTouch(id: string) {
+  return apiRequest<FirstTouchFollowUpItem>(
+    endpoints.outbound.firstTouchReject(id),
+    { method: "POST" },
+  );
 }

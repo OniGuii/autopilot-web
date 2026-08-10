@@ -16,6 +16,7 @@ export type NavItemId =
   | "ai-recovery"
   | "outbound-protection"
   | "outbound-import"
+  | "outbound-first-touch"
   | "exports"
   | "diagnostics"
   | "setup";

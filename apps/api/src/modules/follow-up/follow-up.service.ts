@@ -33,6 +33,11 @@ import {
   isAiFollowUpMetadata,
 } from '../ai/ai.constants';
 import { AiRecoveryService } from '../ai/ai-recovery.service';
+import {
+  OUTBOUND_FIRST_TOUCH_FOLLOWUP_TYPE,
+  OUTBOUND_FIRST_TOUCH_MESSAGE_SOURCE,
+} from '../outbound/outbound-first-touch.constants';
+import { OutboundFirstTouchService } from '../outbound/outbound-first-touch.service';
 import { newCorrelationId } from '../whatsapp/correlation';
 import {
   FOLLOWUP_EXECUTING_TIMEOUT_MS,
@@ -108,6 +113,7 @@ export class FollowUpService {
     private readonly audit: AuditService,
     private readonly whatsappSend: WhatsappSendService,
     @Optional() private readonly aiRecovery?: AiRecoveryService,
+    @Optional() private readonly firstTouch?: OutboundFirstTouchService,
   ) {}
 
   async create(
@@ -654,6 +660,7 @@ export class FollowUpService {
           correlationId: result.metadata?.correlationId ?? correlationId,
         });
       }
+      // FIRST_TOUCH_SENT / FAILED audits are emitted inside runWhatsAppSend.
       return {
         outcome: 'executed',
         status: FollowUpStatus.EXECUTED,
@@ -855,7 +862,9 @@ export class FollowUpService {
       const messageSource =
         existing.type === AI_RECOVERY_FOLLOWUP_TYPE
           ? AI_RECOVERY_MESSAGE_SOURCE
-          : FOLLOWUP_MESSAGE_SOURCE;
+          : existing.type === OUTBOUND_FIRST_TOUCH_FOLLOWUP_TYPE
+            ? OUTBOUND_FIRST_TOUCH_MESSAGE_SOURCE
+            : FOLLOWUP_MESSAGE_SOURCE;
 
       const sent = await this.whatsappSend.send(
         actor,
@@ -911,6 +920,19 @@ export class FollowUpService {
         return updated;
       });
 
+      if (
+        existing.type === OUTBOUND_FIRST_TOUCH_FOLLOWUP_TYPE &&
+        this.firstTouch
+      ) {
+        await this.firstTouch.afterSent({
+          companyId,
+          followUpId: existing.id,
+          messageId: sent.messageId,
+          actorUserId: actor.sub,
+          correlationId,
+        });
+      }
+
       return this.toResponse(followUp);
     } catch (error) {
       const messageId = this.extractFailedMessageId(error);
@@ -953,6 +975,18 @@ export class FollowUpService {
 
         return updated;
       });
+
+      if (
+        existing.type === OUTBOUND_FIRST_TOUCH_FOLLOWUP_TYPE &&
+        this.firstTouch
+      ) {
+        await this.firstTouch.afterFailed({
+          companyId,
+          followUpId: existing.id,
+          actorUserId: actor.sub,
+          errorMessage,
+        });
+      }
 
       // Surface original HTTP error when useful (e.g. 502/503), else wrap
       if (error instanceof ConflictException) {
