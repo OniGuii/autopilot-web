@@ -22,6 +22,7 @@ import {
   BookOpen,
   Gauge,
   RotateCcw,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessNav, type NavItemId } from "@/lib/auth/rbac";
@@ -70,6 +71,13 @@ const NAV: NavItem[] = [
     href: "/ai/recovery",
     label: "Recovery",
     icon: RotateCcw,
+    group: "admin",
+  },
+  {
+    id: "outbound-protection",
+    href: "/outbound/protection",
+    label: "Outbound Protection",
+    icon: Shield,
     group: "admin",
   },
   { id: "exports", href: "/exports", label: "Exportações", icon: Download, group: "admin" },

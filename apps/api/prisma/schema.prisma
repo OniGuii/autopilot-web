@@ -179,6 +179,8 @@ model Company {
   aiSettings            CompanyAiSettings?
   knowledgeBaseEntries  KnowledgeBaseEntry[]
   recoverySettings      CompanyRecoverySettings?
+  outboundProtectionSettings CompanyOutboundProtectionSettings?
+  outboundSuppressEntries    OutboundSuppressEntry[]
 
   @@index([status])
   @@index([slug])
@@ -321,6 +323,7 @@ model Lead {
   notes             LeadNote[]
   activities        LeadActivity[]
   statusTransitions LeadStatusTransition[]
+  outboundSuppressEntries OutboundSuppressEntry[]
 
   @@index([companyId, phone])
   @@index([companyId, status])
@@ -666,4 +669,51 @@ model CompanyRecoverySettings {
   company Company @relation(fields: [companyId], references: [id])
 
   @@map("company_recovery_settings")
+}
+
+/// Outbound V1.1 — Protection Layer policy per company (1:1).
+model CompanyOutboundProtectionSettings {
+  id                  String    @id @default(uuid()) @db.Uuid
+  companyId           String    @unique @map("company_id") @db.Uuid
+  /// When true, enforce daily/hourly caps, lead cooldown, spacing and hours on proactive sends.
+  enabled             Boolean   @default(false)
+  dailyProactiveCap   Int       @default(50) @map("daily_proactive_cap")
+  hourlyProactiveCap  Int       @default(15) @map("hourly_proactive_cap")
+  leadCooldownMinutes Int       @default(60) @map("lead_cooldown_minutes")
+  minSpacingSeconds   Int       @default(30) @map("min_spacing_seconds")
+  /// Local hour window [start, end) in company timezone; null = any time.
+  allowedHoursStart   Int?      @map("allowed_hours_start")
+  allowedHoursEnd     Int?      @map("allowed_hours_end")
+  suppressOnKeywords  String[]  @default(["pare", "stop", "sair", "cancelar"]) @map("suppress_on_keywords")
+  autoSuppressOnLost  Boolean   @default(true) @map("auto_suppress_on_lost")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("company_outbound_protection_settings")
+}
+
+/// Outbound V1.1 — phone suppress / opt-out registry (blocks proactive outbound).
+model OutboundSuppressEntry {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  phone     String    @db.VarChar(32)
+  leadId    String?   @map("lead_id") @db.Uuid
+  reason    String?   @db.VarChar(500)
+  /// MANUAL | KEYWORD | LOST | IMPORT | SYSTEM
+  source    String    @db.VarChar(32)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id])
+  lead    Lead?   @relation(fields: [leadId], references: [id])
+
+  @@unique([companyId, phone])
+  @@index([companyId, active])
+  @@index([companyId, leadId])
+  @@map("outbound_suppress_entries")
 }

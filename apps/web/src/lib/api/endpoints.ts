@@ -100,4 +100,10 @@ export const endpoints = {
     create: "/api/knowledge-base",
     byId: (id: string) => `/api/knowledge-base/${id}`,
   },
+  outbound: {
+    protectionSettings: "/api/outbound/protection/settings",
+    protectionDashboard: "/api/outbound/protection/dashboard",
+    suppress: "/api/outbound/protection/suppress",
+    suppressById: (id: string) => `/api/outbound/protection/suppress/${id}`,
+  },
 } as const;

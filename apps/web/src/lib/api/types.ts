@@ -697,6 +697,70 @@ export type AiRecoveryDashboardResponse = {
   };
 };
 
+export type OutboundProtectionSettings = {
+  id: string;
+  companyId: string;
+  enabled: boolean;
+  dailyProactiveCap: number;
+  hourlyProactiveCap: number;
+  leadCooldownMinutes: number;
+  minSpacingSeconds: number;
+  allowedHoursStart: number | null;
+  allowedHoursEnd: number | null;
+  suppressOnKeywords: string[];
+  autoSuppressOnLost: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutboundProtectionDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  policy: {
+    enabled: boolean;
+    dailyProactiveCap: number;
+    hourlyProactiveCap: number;
+    leadCooldownMinutes: number;
+    minSpacingSeconds: number;
+    allowedHoursStart: number | null;
+    allowedHoursEnd: number | null;
+    autoSuppressOnLost: boolean;
+    suppressOnKeywords: string[];
+  };
+  metrics: {
+    proactiveSentToday: number;
+    proactiveSentHour: number;
+    proactiveSentWeek: number;
+    remainingDaily: number;
+    remainingHourly: number;
+    suppressActive: number;
+    suppressCreatedWeek: number;
+    optOutsWeek: number;
+    blocksToday: number;
+    suppressAddedAuditWeek: number;
+  };
+};
+
+export type OutboundSuppressEntry = {
+  id: string;
+  companyId: string;
+  phone: string;
+  leadId: string | null;
+  reason: string | null;
+  source: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutboundSuppressListResponse = {
+  items: OutboundSuppressEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type NextBestActionCode =
   | "ASK_BUDGET"
   | "ASK_CITY"

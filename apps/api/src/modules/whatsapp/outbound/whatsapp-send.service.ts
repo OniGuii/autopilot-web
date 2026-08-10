@@ -21,6 +21,8 @@ import { PrometheusMetricsService } from '../../../observability/prometheus-metr
 import { OutboundSendProducer } from '../../async/producers/outbound-send.producer';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/jwt-payload';
+import { OutboundProtectionService } from '../../outbound/outbound-protection.service';
+import { isProactiveOutboundSource } from '../../outbound/outbound.constants';
 import { newCorrelationId } from '../correlation';
 import { EVOLUTION_ERROR_CLASS } from '../evolution.constants';
 import { EvolutionClient } from '../evolution.client';
@@ -85,6 +87,8 @@ export class WhatsappSendService {
     private readonly config: ConfigService,
     @Optional() private readonly outboundProducer?: OutboundSendProducer,
     @Optional() private readonly prom?: PrometheusMetricsService,
+    @Optional()
+    private readonly outboundProtection?: OutboundProtectionService,
   ) {
     this.asyncOutboundEnabled =
       this.config.get<boolean>('async.outboundEnabled', false) === true;
@@ -492,6 +496,17 @@ export class WhatsappSendService {
 
     const source = input.metadata?.source?.trim() || 'whatsapp_send';
     const isAiAgent = source === 'ai_agent';
+
+    // Outbound V1.1 — Protection Layer gate (proactive sources only).
+    if (this.outboundProtection && isProactiveOutboundSource(source)) {
+      await this.outboundProtection.assertCanSendProactive({
+        companyId,
+        leadId: lead.id,
+        source,
+        auditOnBlock: true,
+      });
+    }
+
     const extraMeta =
       input.metadata && typeof input.metadata === 'object'
         ? Object.fromEntries(

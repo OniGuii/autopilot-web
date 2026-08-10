@@ -24,6 +24,7 @@ import { AiAssistPipelineService } from '../ai/ai-assist-pipeline.service';
 import { AiRecoveryService } from '../ai/ai-recovery.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { OutboundSuppressService } from '../outbound/outbound-suppress.service';
 import { newCorrelationId } from './correlation';
 import { EvolutionChannelMetrics } from './evolution.channel-metrics';
 import {
@@ -99,6 +100,8 @@ export class WhatsappService {
     private readonly aiAssistPipeline?: AiAssistPipelineService,
     @Optional()
     private readonly aiRecovery?: AiRecoveryService,
+    @Optional()
+    private readonly outboundSuppress?: OutboundSuppressService,
   ) {
     this.webhookSlowMs = this.config.get<number>(
       'evolution.webhookSlowMs',
@@ -707,6 +710,24 @@ export class WhatsappService {
         .catch((err) => {
           this.logger.warn(
             `ai recovery stop-on-reply failed company=${companyId} lead=${result.leadId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+    }
+
+    // Outbound V1.1 — keyword opt-out → suppress list (fire-and-forget).
+    if (this.outboundSuppress) {
+      void this.outboundSuppress
+        .maybeOptOutFromInbound({
+          companyId,
+          leadId: result.leadId,
+          phone: parsed.message.remotePhone,
+          body: parsed.message.body,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `outbound opt-out failed company=${companyId} lead=${result.leadId}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );

@@ -29,6 +29,8 @@ export const SOFT_DELETE_MODELS = [
   'companyAiSettings',
   'knowledgeBaseEntry',
   'companyRecoverySettings',
+  'companyOutboundProtectionSettings',
+  'outboundSuppressEntry',
 ] as const;
 
 export type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];

@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AiRecoveryService } from '../ai/ai-recovery.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
+import { OutboundSuppressService } from '../outbound/outbound-suppress.service';
 import { AssignLeadDto } from './dto/assign-lead.dto';
 import { BulkAssignLeadsDto } from './dto/bulk-assign-leads.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -59,6 +60,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Optional() private readonly aiRecovery?: AiRecoveryService,
+    @Optional() private readonly outboundSuppress?: OutboundSuppressService,
   ) {}
 
   async create(actor: CompanyActor, dto: CreateLeadDto, meta?: RequestMeta) {
@@ -244,6 +246,26 @@ export class LeadsService {
             .catch((err) => {
               this.logger.warn(
                 `ai recovery stop-on-terminal failed lead=${lead.id}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+        }
+        if (
+          statusChanged &&
+          lead.status === LeadStatus.LOST &&
+          this.outboundSuppress
+        ) {
+          void this.outboundSuppress
+            .maybeSuppressOnLost({
+              companyId,
+              leadId: lead.id,
+              phone: lead.phone,
+              status: lead.status,
+            })
+            .catch((err) => {
+              this.logger.warn(
+                `outbound suppress-on-lost failed lead=${lead.id}: ${
                   err instanceof Error ? err.message : String(err)
                 }`,
               );

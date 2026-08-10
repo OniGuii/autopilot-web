@@ -24,6 +24,7 @@ import {
   AI_RECOVERY_SENT,
   AI_RECOVERY_STOPPED,
 } from './ai.constants';
+import { OutboundProtectionService } from '../outbound/outbound-protection.service';
 import { AiRecoveryMessageService } from './ai-recovery-message.service';
 import { AiRecoverySettingsService } from './ai-recovery-settings.service';
 
@@ -35,7 +36,8 @@ export type RecoveryStopReason =
   | 'MAX_ATTEMPTS'
   | 'DISABLED'
   | 'AGENT_MODE_OFF'
-  | 'MANUAL';
+  | 'MANUAL'
+  | 'OUTBOUND_PROTECTED';
 
 type RecoveryMeta = {
   source: typeof AI_RECOVERY_MESSAGE_SOURCE;
@@ -59,6 +61,8 @@ export class AiRecoveryService {
     private readonly messages: AiRecoveryMessageService,
     @Optional() private readonly redis?: RedisService,
     @Optional() private readonly prom?: PrometheusMetricsService,
+    @Optional()
+    private readonly outboundProtection?: OutboundProtectionService,
   ) {}
 
   /**
@@ -233,6 +237,17 @@ export class AiRecoveryService {
       }
     }
 
+    // Outbound V1.1 — skip scheduling when Protection would block send.
+    if (this.outboundProtection) {
+      const gate = await this.outboundProtection.canSendProactive({
+        companyId,
+        leadId: lead.id,
+        source: AI_RECOVERY_MESSAGE_SOURCE,
+        auditOnBlock: false,
+      });
+      if (!gate.allowed) return false;
+    }
+
     const intent = await this.resolveLastIntent(companyId, conversation.id);
     const draft = await this.messages.generate({
       companyId,
@@ -341,6 +356,33 @@ export class AiRecoveryService {
     if (!this.isEligibleStatus(lead.status)) {
       await this.stopLeadRecovery(input.companyId, lead.id, 'MANUAL');
       return { ok: false, reason: 'MANUAL' };
+    }
+
+    if (this.outboundProtection) {
+      const gate = await this.outboundProtection.canSendProactive({
+        companyId: input.companyId,
+        leadId: lead.id,
+        source: AI_RECOVERY_MESSAGE_SOURCE,
+        auditOnBlock: false,
+      });
+      if (!gate.allowed) {
+        const permanent =
+          gate.reason === 'SUPPRESSED' ||
+          gate.reason === 'LEAD_LOST' ||
+          gate.reason === 'LEAD_CONVERTED';
+        if (permanent) {
+          const stopReason: RecoveryStopReason =
+            gate.reason === 'LEAD_LOST'
+              ? 'LOST'
+              : gate.reason === 'LEAD_CONVERTED'
+                ? 'CONVERTED'
+                : 'MANUAL';
+          await this.stopLeadRecovery(input.companyId, lead.id, stopReason);
+          return { ok: false, reason: stopReason };
+        }
+        // Caps / cooldown / hours — soft skip; keep FollowUp SCHEDULED.
+        return { ok: false, reason: 'OUTBOUND_PROTECTED' };
+      }
     }
 
     const meta = this.readMeta(followUp.metadata);
