@@ -217,23 +217,23 @@ describe('Outbound Campaign MVP V1.4A (e2e)', () => {
         expect(res.body.status).toBe('ARCHIVED');
       });
 
-    const prisma = app.get(PrismaService);
-    const audits = await prisma.auditLog.findMany({
-      where: {
-        companyId,
-        targetId: campaignId,
-        action: {
-          in: [
-            'CAMPAIGN_CREATED',
-            'CAMPAIGN_STARTED',
-            'CAMPAIGN_PAUSED',
-            'CAMPAIGN_COMPLETED',
-          ],
-        },
-      },
-      select: { action: true },
-    });
-    const actions = new Set(audits.map((a) => a.action));
+    const auditRes = await request(app.getHttpServer())
+      .get('/api/ops/audit')
+      .query({
+        actionPrefix: 'CAMPAIGN_',
+        entity: 'OUTBOUND_CAMPAIGN',
+        limit: 50,
+      })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const actions = new Set(
+      (
+        auditRes.body.data as Array<{ action: string; targetId: string }>
+      )
+        .filter((a) => a.targetId === campaignId)
+        .map((a) => a.action),
+    );
     expect(actions.has('CAMPAIGN_CREATED')).toBe(true);
     expect(actions.has('CAMPAIGN_STARTED')).toBe(true);
     expect(actions.has('CAMPAIGN_PAUSED')).toBe(true);
