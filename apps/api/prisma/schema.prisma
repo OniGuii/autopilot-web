@@ -183,6 +183,8 @@ model Company {
   outboundSuppressEntries    OutboundSuppressEntry[]
   leadImportBatches          LeadImportBatch[]
   firstTouchSettings         CompanyFirstTouchSettings?
+  outboundCampaigns          OutboundCampaign[]
+  outboundCampaignLeads      OutboundCampaignLead[]
 
   @@index([status])
   @@index([slug])
@@ -215,6 +217,7 @@ model User {
   leadActivities               LeadActivity[]         @relation("LeadActivityAssignee")
   leadStatusTransitionsChanged LeadStatusTransition[] @relation("LeadStatusChangedBy")
   leadImportBatchesCreated     LeadImportBatch[]      @relation("LeadImportBatchCreator")
+  outboundCampaignsCreated     OutboundCampaign[]     @relation("OutboundCampaignCreator")
 
   @@index([status])
   @@map("users")
@@ -327,6 +330,7 @@ model Lead {
   activities        LeadActivity[]
   statusTransitions LeadStatusTransition[]
   outboundSuppressEntries OutboundSuppressEntry[]
+  outboundCampaignLeads   OutboundCampaignLead[]
 
   @@index([companyId, phone])
   @@index([companyId, status])
@@ -783,4 +787,52 @@ model CompanyFirstTouchSettings {
   company Company @relation(fields: [companyId], references: [id])
 
   @@map("company_first_touch_settings")
+}
+
+/// Outbound V1.4A — Campaign MVP (orchestration container; no blast).
+model OutboundCampaign {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+  name            String    @db.VarChar(200)
+  description     String?   @db.VarChar(2000)
+  objective       String    @db.VarChar(500)
+  /// DRAFT | READY | RUNNING | PAUSED | COMPLETED | ARCHIVED
+  status          String    @default("DRAFT") @db.VarChar(32)
+  startedAt       DateTime? @map("started_at") @db.Timestamptz(6)
+  pausedAt        DateTime? @map("paused_at") @db.Timestamptz(6)
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(6)
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company   Company                @relation(fields: [companyId], references: [id])
+  createdBy User?                  @relation("OutboundCampaignCreator", fields: [createdByUserId], references: [id])
+  leads     OutboundCampaignLead[]
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("outbound_campaigns")
+}
+
+/// Outbound V1.4A — Campaign ↔ Lead membership (add/remove/count).
+model OutboundCampaignLead {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  campaignId String    @map("campaign_id") @db.Uuid
+  leadId     String    @map("lead_id") @db.Uuid
+  addedAt    DateTime  @default(now()) @map("added_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company  Company          @relation(fields: [companyId], references: [id])
+  campaign OutboundCampaign @relation(fields: [campaignId], references: [id])
+  lead     Lead             @relation(fields: [leadId], references: [id])
+
+  @@unique([campaignId, leadId])
+  @@index([companyId, campaignId])
+  @@index([companyId, leadId])
+  @@map("outbound_campaign_leads")
 }

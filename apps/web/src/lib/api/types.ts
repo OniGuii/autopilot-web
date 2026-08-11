@@ -891,6 +891,91 @@ export type FirstTouchGenerateResponse = {
   skippedReasons: Record<string, number | boolean>;
 };
 
+export type CampaignStatus =
+  | "DRAFT"
+  | "READY"
+  | "RUNNING"
+  | "PAUSED"
+  | "COMPLETED"
+  | "ARCHIVED";
+
+export type CampaignMetrics = {
+  totalLeads: number;
+  eligible: number;
+  firstTouchSent: number;
+  responded: number;
+  hot: number;
+  converted: number;
+  replyRate: number;
+  hotRate: number;
+  convertRate: number;
+};
+
+export type OutboundCampaign = {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  objective: string;
+  status: CampaignStatus | string;
+  leadCount: number;
+  startedAt: string | null;
+  pausedAt: string | null;
+  completedAt: string | null;
+  archivedAt: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  metrics?: CampaignMetrics;
+};
+
+export type OutboundCampaignListResponse = {
+  items: OutboundCampaign[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type CampaignDashboardResponse = {
+  companyId: string;
+  generatedAt: string;
+  metrics: {
+    campaignsTotal: number;
+    active: number;
+    completed: number;
+    totalLeads: number;
+    eligible: number;
+    firstTouchSent: number;
+    responded: number;
+    hot: number;
+    converted: number;
+    replyRate: number;
+    hotRate: number;
+    convertRate: number;
+  };
+};
+
+export type CampaignLeadItem = {
+  membershipId: string;
+  leadId: string;
+  addedAt: string;
+  name: string | null;
+  phone: string;
+  status: string;
+  score: number;
+  lastOutboundAt: string | null;
+  lastInboundAt: string | null;
+};
+
+export type CampaignLeadListResponse = {
+  items: CampaignLeadItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type NextBestActionCode =
   | "ASK_BUDGET"
   | "ASK_CITY"

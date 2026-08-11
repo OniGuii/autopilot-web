@@ -17,6 +17,7 @@ export type NavItemId =
   | "outbound-protection"
   | "outbound-import"
   | "outbound-first-touch"
+  | "outbound-campaigns"
   | "exports"
   | "diagnostics"
   | "setup";

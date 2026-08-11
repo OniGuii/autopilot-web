@@ -45,6 +45,7 @@ type LeadMeta = {
   value?: unknown;
   notes?: unknown;
   importBatchId?: unknown;
+  outboundCampaignId?: unknown;
 };
 
 @Injectable()
@@ -553,6 +554,7 @@ export class OutboundFirstTouchService {
             mode: settings.mode,
             playbook: settings.verticalPlaybook,
             importBatchId: strOrNull(metaObj.importBatchId),
+            outboundCampaignId: strOrNull(metaObj.outboundCampaignId),
           },
         },
       });
