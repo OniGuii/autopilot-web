@@ -1,6 +1,8 @@
 import { apiRequest } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import type {
+  CampaignDashboardResponse,
+  CampaignLeadListResponse,
   FirstTouchDashboardResponse,
   FirstTouchFollowUpListResponse,
   FirstTouchGenerateResponse,
@@ -8,6 +10,8 @@ import type {
   LeadImportBatch,
   LeadImportBatchListResponse,
   LeadImportDashboardResponse,
+  OutboundCampaign,
+  OutboundCampaignListResponse,
   OutboundProtectionDashboardResponse,
   OutboundProtectionSettings,
   OutboundSuppressListResponse,
@@ -221,4 +225,131 @@ export function rejectFirstTouch(id: string) {
     endpoints.outbound.firstTouchReject(id),
     { method: "POST" },
   );
+}
+
+export function fetchCampaignDashboard() {
+  return apiRequest<CampaignDashboardResponse>(
+    endpoints.outbound.campaignsDashboard,
+  );
+}
+
+export function listCampaigns(params?: {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.status) sp.set("status", params.status);
+  if (params?.page) sp.set("page", String(params.page));
+  if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
+  const q = sp.toString();
+  return apiRequest<OutboundCampaignListResponse>(
+    `${endpoints.outbound.campaigns}${q ? `?${q}` : ""}`,
+  );
+}
+
+export function fetchCampaign(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaign(id));
+}
+
+export function createCampaign(input: {
+  name: string;
+  objective: string;
+  description?: string;
+}) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaigns, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export function updateCampaign(
+  id: string,
+  input: Partial<{
+    name: string;
+    objective: string;
+    description: string | null;
+  }>,
+) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaign(id), {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function campaignReady(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignReady(id), {
+    method: "POST",
+  });
+}
+
+export function campaignStart(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignStart(id), {
+    method: "POST",
+  });
+}
+
+export function campaignPause(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignPause(id), {
+    method: "POST",
+  });
+}
+
+export function campaignResume(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignResume(id), {
+    method: "POST",
+  });
+}
+
+export function campaignComplete(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignComplete(id), {
+    method: "POST",
+  });
+}
+
+export function campaignArchive(id: string) {
+  return apiRequest<OutboundCampaign>(endpoints.outbound.campaignArchive(id), {
+    method: "POST",
+  });
+}
+
+export function listCampaignLeads(
+  id: string,
+  params?: { page?: number; pageSize?: number },
+) {
+  const sp = new URLSearchParams();
+  if (params?.page) sp.set("page", String(params.page));
+  if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
+  const q = sp.toString();
+  return apiRequest<CampaignLeadListResponse>(
+    `${endpoints.outbound.campaignLeads(id)}${q ? `?${q}` : ""}`,
+  );
+}
+
+export function addCampaignLeads(id: string, leadIds: string[]) {
+  return apiRequest(endpoints.outbound.campaignLeads(id), {
+    method: "POST",
+    body: { leadIds },
+  });
+}
+
+export function removeCampaignLeads(id: string, leadIds: string[]) {
+  return apiRequest(endpoints.outbound.campaignLeadsRemove(id), {
+    method: "POST",
+    body: { leadIds },
+  });
+}
+
+export function attachImportToCampaign(id: string, importBatchId: string) {
+  return apiRequest(endpoints.outbound.campaignAttachImport(id), {
+    method: "POST",
+    body: { importBatchId },
+  });
+}
+
+export function generateCampaignFirstTouch(id: string, limit?: number) {
+  return apiRequest(endpoints.outbound.campaignFirstTouchGenerate(id), {
+    method: "POST",
+    body: { limit },
+  });
 }

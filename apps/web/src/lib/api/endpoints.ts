@@ -124,5 +124,21 @@ export const endpoints = {
       `/api/outbound/first-touch/follow-ups/${id}/approve`,
     firstTouchReject: (id: string) =>
       `/api/outbound/first-touch/follow-ups/${id}/reject`,
+    campaigns: "/api/outbound/campaigns",
+    campaignsDashboard: "/api/outbound/campaigns/dashboard",
+    campaign: (id: string) => `/api/outbound/campaigns/${id}`,
+    campaignReady: (id: string) => `/api/outbound/campaigns/${id}/ready`,
+    campaignStart: (id: string) => `/api/outbound/campaigns/${id}/start`,
+    campaignPause: (id: string) => `/api/outbound/campaigns/${id}/pause`,
+    campaignResume: (id: string) => `/api/outbound/campaigns/${id}/resume`,
+    campaignComplete: (id: string) => `/api/outbound/campaigns/${id}/complete`,
+    campaignArchive: (id: string) => `/api/outbound/campaigns/${id}/archive`,
+    campaignLeads: (id: string) => `/api/outbound/campaigns/${id}/leads`,
+    campaignLeadsRemove: (id: string) =>
+      `/api/outbound/campaigns/${id}/leads/remove`,
+    campaignAttachImport: (id: string) =>
+      `/api/outbound/campaigns/${id}/attach-import`,
+    campaignFirstTouchGenerate: (id: string) =>
+      `/api/outbound/campaigns/${id}/first-touch/generate`,
   },
 } as const;

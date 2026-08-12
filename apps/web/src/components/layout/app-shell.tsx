@@ -25,6 +25,7 @@ import {
   Shield,
   Upload,
   Megaphone,
+  Flag,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessNav, type NavItemId } from "@/lib/auth/rbac";
@@ -94,6 +95,13 @@ const NAV: NavItem[] = [
     href: "/outbound/first-touch",
     label: "First Touch",
     icon: Megaphone,
+    group: "admin",
+  },
+  {
+    id: "outbound-campaigns",
+    href: "/outbound/campaigns",
+    label: "Campanhas",
+    icon: Flag,
     group: "admin",
   },
   { id: "exports", href: "/exports", label: "Exportações", icon: Download, group: "admin" },

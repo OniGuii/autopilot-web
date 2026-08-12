@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { OutboundCampaignController } from './outbound-campaign.controller';
+import { OutboundCampaignService } from './outbound-campaign.service';
 import { OutboundFirstTouchController } from './outbound-first-touch.controller';
 import { OutboundFirstTouchService } from './outbound-first-touch.service';
 import { OutboundImportController } from './outbound-import.controller';
@@ -17,6 +19,7 @@ import { OutboundSuppressService } from './outbound-suppress.service';
     OutboundProtectionController,
     OutboundImportController,
     OutboundFirstTouchController,
+    OutboundCampaignController,
   ],
   providers: [
     OutboundProtectionSettingsService,
@@ -25,6 +28,7 @@ import { OutboundSuppressService } from './outbound-suppress.service';
     OutboundProtectionDashboardService,
     OutboundImportService,
     OutboundFirstTouchService,
+    OutboundCampaignService,
   ],
   exports: [
     OutboundProtectionService,
@@ -32,6 +36,7 @@ import { OutboundSuppressService } from './outbound-suppress.service';
     OutboundSuppressService,
     OutboundImportService,
     OutboundFirstTouchService,
+    OutboundCampaignService,
   ],
 })
 export class OutboundModule {}

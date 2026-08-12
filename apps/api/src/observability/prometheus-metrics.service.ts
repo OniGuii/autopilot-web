@@ -110,6 +110,10 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
   readonly firstTouchSentTotal: Counter<string>;
   readonly firstTouchFailedTotal: Counter<string>;
   readonly firstTouchReplyRate: Gauge<string>;
+  /** Outbound V1.4A — Campaign MVP. */
+  readonly campaignsTotal: Gauge<string>;
+  readonly campaignLeadsTotal: Counter<string>;
+  readonly campaignReplyRate: Gauge<string>;
 
   readonly whatsappSendsTotal: Counter<string>;
   readonly whatsappSendFailuresTotal: Counter<string>;
@@ -526,6 +530,22 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
       registers: [this.registry],
     });
 
+    this.campaignsTotal = new Gauge({
+      name: 'campaigns_total',
+      help: 'Outbound campaigns count (V1.4A)',
+      registers: [this.registry],
+    });
+    this.campaignLeadsTotal = new Counter({
+      name: 'campaign_leads_total',
+      help: 'Leads added to outbound campaigns (V1.4A)',
+      registers: [this.registry],
+    });
+    this.campaignReplyRate = new Gauge({
+      name: 'campaign_reply_rate',
+      help: 'Campaign reply rate from last dashboard compute (V1.4A)',
+      registers: [this.registry],
+    });
+
     this.whatsappSendsTotal = new Counter({
       name: 'whatsapp_sends_total',
       help: 'WhatsApp outbound send attempts',
@@ -879,6 +899,22 @@ export class PrometheusMetricsService implements OnModuleInit, OnModuleDestroy {
 
   setFirstTouchReplyRate(rate: number): void {
     this.firstTouchReplyRate.set(Math.max(0, Math.min(1, rate)));
+  }
+
+  recordCampaignCreated(): void {
+    this.campaignsTotal.inc();
+  }
+
+  setCampaignsTotal(n: number): void {
+    this.campaignsTotal.set(Math.max(0, n));
+  }
+
+  recordCampaignLeadsAdded(n: number): void {
+    if (n > 0) this.campaignLeadsTotal.inc(n);
+  }
+
+  setCampaignReplyRate(rate: number): void {
+    this.campaignReplyRate.set(Math.max(0, Math.min(1, rate)));
   }
 
   recordWhatsappSend(ok: boolean): void {
